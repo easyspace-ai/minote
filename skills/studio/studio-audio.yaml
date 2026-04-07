@@ -1,9 +1,20 @@
 ---
 name: studio-audio
-version: "1.0"
+version: "1.1.0"
 description: >
   将文本转换为高质量语音音频（TTS）。支持多语言、多音色、语速/语调调节，
   输出 MP3 文件 URL。触发条件：用户要求生成音频、朗读文章、语音播报、制作播客。
+
+compatibility:
+  min_server_version: "2.0.0"
+  deprecated: []
+
+migration:
+  notes: "v1.0 -> v1.1: 细化工具定义，添加文本预处理"
+  auto_migrate: true
+  guides:
+    v1.0: "所有 v1.0 配置完全兼容，无需修改"
+
 trigger_keywords:
   - 生成音频
   - 文字转语音
@@ -15,9 +26,33 @@ trigger_keywords:
   - audio
   - text to speech
 tools:
-  - tts_generate         # 调用后端 TTS 服务（标准 or 火山引擎）
-  - studio_job_status    # 轮询任务状态
-  - file_url_resolve     # 获取可访问的文件 URL
+  - name: tts_generate
+    description: 调用 TTS 服务将文本转为语音
+    params:
+      provider: "auto"                    # auto|tts|volc-tts，根据配置自动选择
+      default_language: "zh-CN"
+      supported_formats: [mp3, wav, ogg]
+      fallback_provider: "tts"            # 主服务失败时的备用
+
+  - name: text_preprocessor
+    description: 文本预处理（SSML 标记、分段）
+    params:
+      max_segment_length: 5000            # 单段最大字符
+      auto_split: true                    # 超长文本自动分段
+      ssml_support: true                  # 支持基础 SSML 标记
+
+  - name: studio_job_status
+    description: 轮询 TTS 任务状态
+    params:
+      timeout_seconds: 120
+      poll_interval_seconds: 2
+      retry_on_timeout: true
+
+  - name: file_url_resolve
+    description: 生成可访问的音频文件 URL
+    params:
+      expiry_hours: 168
+      allow_direct_play: true             # 支持直接播放
 input_schema:
   required:
     - text               # 要转换的文本内容
@@ -144,6 +179,25 @@ params:
 - 始终提供可点击的播放/下载按钮（前端渲染）
 - 展示音色名称和预估时长
 - 若用户请求多段，分别展示每段结果
+
+### Step 5：质量评估（QA）
+
+在返回结果前，执行自检：
+
+**QA Checklist**:
+- [ ] 音频时长 > 0 秒
+- [ ] 音频文件大小合理（不超过文本长度的 2 倍）
+- [ ] 音频格式正确（MP3/WAV/OGG）
+- [ ] 语速在合理范围（0.5x - 2.0x）
+
+**质量指标**:
+| 项目 | 标准 | 检测方式 |
+|------|------|----------|
+| 完整性 | 文本完全转换 | 对比原文与元数据 |
+| 清晰度 | 无静音/截断 | 音频分析 |
+| 格式正确 | 可正常播放 | 文件头验证 |
+
+若 QA 失败，标记任务为 `failed` 并提供详细原因。
 
 ## 示例
 

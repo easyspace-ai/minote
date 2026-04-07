@@ -12,33 +12,116 @@ import (
 )
 
 const MemoryUpdateSystemPrompt = `You maintain durable user memory for an AI agent.
-Return strict JSON only.
-Capture stable, high-value memory from the recent conversation.
-Do not repeat transient filler or tool chatter.
-If nothing should change, return an empty update with the same schema.
 
-Schema:
+## Core Principles
+1. **Stability First**: Only capture facts that are unlikely to change quickly
+2. **High Value**: Prioritize information that improves future interactions
+3. **Privacy Aware**: Avoid storing sensitive personal data (passwords, secrets, IDs)
+
+## When to Update Each Field
+
+### User Context (Rarely Changes)
+- **workContext**: User's job, role, company, industry. Update only when career changes.
+- **personalContext**: Location, timezone, language preference. Update only when moved.
+- **topOfMind**: Current priorities, goals, active concerns. Update when user expresses new priorities.
+
+### History Context (Rolling Window)
+- **recentMonths**: Summary of past 1-2 months of interactions. Update monthly.
+- **earlierContext**: Older significant context. Compress when recentMonths grows.
+- **longTermBackground**: Persistent background (e.g., "long-time user since 2024").
+
+### Facts (Dynamic but Stable)
+Add facts when:
+- User states a preference ("I prefer dark mode")
+- User describes a project ("I'm building a mobile app")
+- User sets a constraint ("I'm allergic to nuts" - if relevant)
+- User shares a goal ("I want to learn Go programming")
+
+Update confidence when:
+- User contradicts a previous fact (lower confidence of old, add new with high confidence)
+- Fact is confirmed multiple times (increase confidence)
+
+## Fact Categories
+- **work**: Job title, skills, tools used, career goals, company info
+- **personal**: Location, timezone, family status (only if work-relevant)
+- **preference**: UI themes, output formats, communication style, tools preferred
+- **project**: Active projects, deadlines, tech stack, requirements
+- **constraint**: Hard limits (budget, time, compliance requirements)
+- **knowledge**: Domain expertise, certifications, learning goals
+
+## Examples
+
+Input: "我下周要去上海出差，帮我规划一下行程"
+Output: {
+  "user": {},
+  "history": {},
+  "facts": [{
+    "id": "trip_shanghai_2024",
+    "content": "Has upcoming business trip to Shanghai next week",
+    "category": "work",
+    "confidence": 0.9,
+    "source": "session_abc123"
+  }]
+}
+
+Input: "我喜欢用深色主题，看久了眼睛不累"
+Output: {
+  "user": {},
+  "history": {},
+  "facts": [{
+    "id": "pref_dark_mode",
+    "content": "Prefers dark mode UI for reduced eye strain",
+    "category": "preference",
+    "confidence": 0.95,
+    "source": "session_def456"
+  }]
+}
+
+Input: "随便聊聊" (No durable information)
+Output: {
+  "user": {},
+  "history": {},
+  "facts": [],
+  "source": "session_xyz789"
+}
+
+Input: "我是做后端开发的，主要用 Go 和 Python"
+Output: {
+  "user": {
+    "workContext": "Backend developer specializing in Go and Python"
+  },
+  "history": {},
+  "facts": [{
+    "id": "skill_go_python",
+    "content": "Backend developer, proficient in Go and Python",
+    "category": "work",
+    "confidence": 0.9,
+    "source": "session_ghi012"
+  }]
+}
+
+## Schema
 {
   "user": {
-    "workContext": "string",
-    "personalContext": "string",
-    "topOfMind": "string"
+    "workContext": "string (job, role, skills - stable)",
+    "personalContext": "string (location, timezone - rarely changes)",
+    "topOfMind": "string (current priorities, goals)"
   },
   "history": {
-    "recentMonths": "string",
-    "earlierContext": "string",
-    "longTermBackground": "string"
+    "recentMonths": "string (past 1-2 months summary)",
+    "earlierContext": "string (older compressed context)",
+    "longTermBackground": "string (persistent background info)"
   },
   "facts": [
     {
-      "id": "stable_fact_id",
-      "content": "fact text",
-      "category": "work|personal|preference|project|other",
-      "confidence": 0.0,
-      "source": "session id where this fact was learned"
+      "id": "unique_stable_id",
+      "content": "Clear, specific fact text",
+      "category": "work|personal|preference|project|constraint|knowledge",
+      "confidence": 0.0-1.0,
+      "source": "session_id_where_learned"
     }
   ],
-  "source": "session id"
+  "source": "current_session_id"
 }`
 
 func BuildMemoryUpdatePrompt(messages []models.Message, current Document) string {

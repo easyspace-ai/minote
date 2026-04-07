@@ -1,0 +1,64 @@
+# Docker Compose 生产部署配置 (Production Deployment)
+#
+# 用途:
+#   - 服务器部署时使用，从阿里云 ACR 拉取预构建镜像
+#   - 不构建，只拉取运行
+#
+# 使用方法 (服务器上):
+#   1. 配置 .env 文件 (从 .env.server.example 复制并修改)
+#   2. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+#   或使用环境变量:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml docker compose up -d
+#
+# 前置要求:
+#   - 已配置 ACR 镜像地址 (MARKITDOWN_IMAGE, DOCREADER_IMAGE)
+#   - 已 docker login 到阿里云 ACR
+#
+# 更新镜像:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+name: youmind
+
+services:
+  markitdown:
+    # 生产环境: 使用 ACR 预构建镜像，禁用本地构建
+    build: !reset null
+    image: ${MARKITDOWN_IMAGE}
+    # 生产环境不暴露端口到 0.0.0.0，只暴露到 127.0.0.1 或内网
+    # 如需公网访问，请在服务器 .env 中覆盖 MARKITDOWN_PORT
+    ports:
+      - "127.0.0.1:${MARKITDOWN_PORT:-8787}:8787"
+    restart: always
+
+  docreader:
+    # 生产环境: 使用 ACR 预构建镜像，禁用本地构建
+    build: !reset null
+    image: ${DOCREADER_IMAGE}
+    ports:
+      - "127.0.0.1:${DOCREADER_PORT:-50051}:50051"
+    restart: always
+
+  postgres:
+    restart: always
+    # 生产环境: 绑定到 127.0.0.1
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
+
+  redis:
+    restart: always
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+
+  minio:
+    restart: always
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+
+  milvus:
+    restart: always
+    ports:
+      - "127.0.0.1:${MILVUS_PORT:-19530}:19530"
+      - "127.0.0.1:${MILVUS_HEALTH_PORT:-9091}:9091"
