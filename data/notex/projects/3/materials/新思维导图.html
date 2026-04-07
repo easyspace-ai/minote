@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>新思维导图</title><style>body{margin:0;overflow:hidden}svg.markmap{width:100vw;height:100vh}</style><script src="https://cdn.jsdelivr.net/npm/markmap-autoloader@latest"></script></head>
+<body>
+<div class="markmap">
+<script type="text/template">
+# 新思维导图
+- 项目介绍
+  - LLM编译的知识库，适用于任何AI代理
+  - 核心功能：多代理并行研究、主题驱动调查、源数据摄入、wiki编译、查询、工件生成
+  - 兼容性：支持Claude Code原生插件、可移植AGENTS.md（兼容Codex等所有LLM代理）、Obsidian笔记软件
+- 版本更新日志
+  - v0.0.12：新增可配置中心路径，支持存储到iCloud、Dropbox等自定义位置，修复了iCloud路径解析问题
+  - v0.0.11：新增源撤回功能，可移除源并清理所有下游引用，新增lint规则检测悬挂引用
+  - v0.0.10：提升研究质量，新增会话崩溃恢复、标准化代理提示、可信度评分、0-100进度评分、轮次间计划反思
+- 安装与升级
+  - 安装方式
+    - Claude Code原生插件：一键命令安装，直接集成
+    - 任意LLM代理：复制AGENTS.md到项目根目录即可使用
+  - 升级方式
+    - Claude Code：支持常规命令升级，缓存不生效时可手动同步最新代码
+    - AGENTS.md：直接拉取最新版本替换原文件即可
+- 快速开始示例
+  - 创建新主题研究：`/wiki:research "topic" --new-topic`，一键完成创建和研究启动
+  - 追加研究：`/wiki:research "sub-topic" --wiki existing-topic`，向现有wiki添加内容
+  - 论文驱动研究：`/wiki:thesis "claim"`，针对特定声明评估正反证据给出结论
+  - 知识库查询：`/wiki:query "question"`，基于已编译wiki回答问题
+  - 生成输出：`/wiki:output report --topic topic-name`，生成报告等成品工件
+- 核心命令列表
+  - 基础管理命令
+    - `/wiki`：显示wiki状态、统计信息，列出所有主题wiki
+    - `/wiki init <name>`：创建主题wiki，支持`--local`创建项目本地wiki
+  - 数据处理命令
+    - `/wiki:ingest <source>`：摄入URL、文件、文本等源，支持`--inbox`批量处理收件箱文件
+    - `/wiki:compile`：编译新源到wiki文章，支持`--full`从头重新编译所有内容
+  - 研究查询命令
+    - `/wiki:research <topic>`：开启多代理并行研究，支持多种模式和参数调节
+    - `/wiki:thesis <claim>`：针对特定声明展开论文驱动研究
+    - `/wiki:query <question>`：知识库问答，支持`--quick`快速回答、`--deep`深度查询
+    - `/wiki:search <terms>`：按关键字或标签查找内容
+  - 检查输出命令
+    - `/wiki:lint`：运行wiki健康检查，支持`--fix`自动修复结构问题、`--deep`网络验证事实
+    - `/wiki:output <type>`：生成摘要、报告、学习指南、幻灯片、时间线、术语表、对比等工件，支持`--retardmax`快速出稿
+    - `/wiki:assess <path>`：针对仓库对比wiki研究和市场做差距分析，支持`--retardmax`扩大搜索范围
+- 架构与核心设计
+  - 目录结构
+    - 中心hub（`~/wiki/`）：仅存储注册表、全局索引和活动日志，不存储具体主题内容
+    - 独立主题wiki：每个主题对应一个隔离wiki，包含收件箱、原始源、编译文章、输出工件等目录
+  - 工作流程
+    1. 主题研究：多代理并行搜索网络，摄入源，编译文章一步完成
+    2. 补充摄入：手动添加URL、文件、文本等额外源
+    3. 合成编译：将原始源合成为带交叉引用和置信度评分的wiki文章
+    4. 知识查询：根据需求选择不同深度查询获取答案
+    5. 差距评估：对比现有项目和wiki知识找出差距
+    6. 健康检查：清理不一致结构问题
+    7. 生成输出：导出成品工件并存入wiki
+  - 设计特点
+    - 一个主题一个隔离wiki，避免跨主题噪音干扰
+    - 多代理并行从不同角度研究，覆盖更全面
+    - 全目录索引导航，避免盲目扫描
+    - 文章为合成解释内容而非原文复制，带上下文和交叉引用
+    - 原始源不可修改，保证数据完整性
+    - 支持跨主题wiki查找重叠内容
+    - 双链接格式，同时兼容Obsidian和通用markdown查看器
+    - 基于源质量和佐证给出置信度评分（高/中/低）
+    - 自动检查wiki完整性，静默修复 trivial 问题
+    - 仅追加活动日志，兼容grep搜索
+    - 零外部依赖，完全基于LLM代理内置工具运行
+- 研究模式
+  - 标准模式：默认5个代理，覆盖学术、技术、应用、新闻、对立观点五个角度
+  - 深度模式：`--deep`参数，8个代理，新增历史、相邻领域、数据统计方向
+  - Retardmax模式：`--retardmax`参数，10个代理，跳过规划， widest net搜索，激进摄入快速编译，后续再检查，解决分析瘫痪问题
+  - 智能输入检测
+    - 输入主题：默认按开放领域探索
+    - 输入问题：自动分解为子问题，每个代理处理一个子问题，最终生成行动手册和可验证论文
+  - 可调参数
+    - `--new-topic`：任意目录下直接创建新主题wiki并启动研究
+    - `--min-time <duration>`：持续多轮研究直到时间预算用完，每一轮深入上一轮发现的知识缺口
+    - `--sources <N>`：每轮处理源数量，默认5，retardmax默认15
+- 论文驱动研究
+  - 工作原理：从具体声明出发，分解为关键变量、可测试预测、证伪标准
+  - 代理分工：支持方、反对方、机制研究、元分析综述、相邻领域，平衡设计避免偏见
+  - 输出结果：编译证据到wiki文章，附带证据表格，给出明确结论：支持/部分支持/矛盾/证据不足/混合
+  - 反偏见设计：使用`--min-time`时，第二轮自动聚焦证据较弱的一方，避免确认偏见
+  - 优势：用声明作为膨胀过滤器，只摄入相关源，聚焦性更强，减少无用内容
+- 工具兼容与Obsidian集成
+  - 双链接格式：同时包含`[[wikilink]]`和标准markdown相对链接，兼容所有工具
+  - Obsidian集成
+    - 每个主题wiki是独立vault，可单独打开，避免嵌套vault混乱
+    - 初始化自动生成合理默认配置，支持别名、标签原生搜索
+    - 收件箱支持Obsidian拖放操作
+    - Claude Code负责编译，Obsidian仅作为可选查看器
+- 查询深度分级
+  - 快速查询：`--quick`，仅读取索引，速度最快，适用于简单查找
+  - 标准查询：默认配置，读取相关文章+全文搜索，适用于大多数问题
+  - 深度查询：`--deep`，读取所有内容，搜索原始源，检查相邻主题wiki，适用于复杂问题
+- 致谢与许可证
+  - 致谢：感谢Andrej Karpathy提出LLM wiki概念、Elisha Long提出retardmaxxing哲学、开源社区提供现有技术参考
+  - 许可证：MIT开源许可证
+</script>
+</div>
+</body></html>

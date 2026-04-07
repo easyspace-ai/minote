@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>新思维导图</title><style>body{margin:0;overflow:hidden}svg.markmap{width:100vw;height:100vh}</style><script src="https://cdn.jsdelivr.net/npm/markmap-autoloader@latest"></script></head>
+<body>
+<div class="markmap">
+<script type="text/template">
+# 新思维导图
+- 全局视角：CLI 工具 vs Agent Operating System
+  - 你在看什么
+    - 素材来自Claude Code npm包，提取得到4756个文件
+    - src/顶层超过50个模块目录
+  - 代码库规模
+    - 模块文件数：utils/ 564、components/ 389、commands/ 207、tools/ 184等
+    - 核心文件行数：main.tsx 4683、toolExecution.ts 1745、query.ts 1729等
+  - 入口层暴露的设计意图
+    - 多个入口：cli.tsx、init.ts、mcp.ts、sdk/，支持CLI、MCP、SDK、IDE插件
+    - fast-path分发逻辑：--version、remote-control、daemon等场景按需加载
+  - 命令系统不是装饰品
+    - src/commands/下有101个命令
+    - 命令系统是交互控制面，也是生态入口
+- 引擎：主循环与 Prompt 编排
+  - 一个请求运行链路
+    - cli.tsx分发 → main.tsx初始化 → query()进入主循环
+    - 每次迭代：压缩上下文 → 组装prompt → 调用模型API → 处理工具调用 → 继续或退出
+  - query.ts：1729行的状态机
+    - while(true)循环+state对象传递状态，替代递归避免爆栈
+    - 迭代步骤：上下文预处理 → Token预算检查 → 调用API → 流式处理响应 → 错误恢复 → Stop hooks → Token预算检查 → 工具执行 → 附件注入 → 下一轮
+  - Streaming Tool Execution：边收边跑
+    - 模型输出过程中，已完成tool_use block立即执行
+    - 减少用户等待时间，提升体验
+  - Prompt组装：精密拼装机器
+    - 静态可缓存部分：身份定位、系统运行规范、行为规范等
+    - 动态注入部分：Session guidance、Memory、环境信息等
+    - 用SYSTEM_PROMPT_DYNAMIC_BOUNDARY分隔静态和动态
+  - Prompt Cache 经济学
+    - 前缀缓存机制，不变内容放前面提升缓存命中率
+    - 动态section缓存，仅MCP instructions每次重算
+  - 行为规范：约束AI工程师行为
+    - 明确禁止：不加无关功能、不过度抽象、不改未读代码等
+    - 要求：先读代码再改、如实汇报结果等
+- 工具系统：42 个工具和一条治理流水线
+  - Tool接口设计
+    - 核心方法：call()、inputSchema、validateInput、checkPermissions等
+    - 多个render方法处理不同UI场景
+    - fail-closed默认值设计，默认不安全、默认可写，严格校验
+  - 42个工具分类
+    - 文件操作：FileRead、FileEdit等
+    - 执行：BashTool、PowerShellTool
+    - 调度：AgentTool、任务相关工具
+    - 集成：MCP相关工具
+    - Web能力：WebSearch、WebFetch
+  - 工具执行Pipeline
+    - 完整流程：找工具 → 解析MCP元数据 → Zod校验 → 工具自校验 → 风险分类 → PreToolUse hooks → 权限决策 → 修正输入 → 执行 → 记录遥测 → PostToolUse hooks → 处理结果 → 失败hooks处理
+    - BashTool设计：Speculative Classifier提前并行预判风险
+- 多 Agent 体系：分工和调度
+  - 为什么需要多Agent
+    - 至少6个内建Agent，分工提升专业性
+    - 通用、探索、规划、验证等职责分离
+  - Explore Agent：裁剪出来的只读专家
+    - 禁止任何写操作，仅允许读工具和读命令
+    - 默认使用Haiku模型，更快更便宜
+  - Verification Agent：对抗性验证
+    - prompt核心：想办法搞坏它
+    - 强制要求：根据变更类型做实际验证，必须输出实际执行结果
+    - 实现者验证者分离，避免偏见
+  - AgentTool.tsx：调度总控
+    - 处理fork、built-in、multi-agent等多种场景
+    - 负责参数解析、权限过滤、构造prompt、隔离处理、调用runAgent
+  - Fork path的cache优化
+    - 尽量保持字节一致，复用主线程prompt缓存
+  - runAgent.ts：子Agent完整运行时
+    - 负责完整生命周期：初始化、克隆缓存、构造上下文、权限模式、执行、清理
+    - 支持agent自带MCP servers扩展
+  - 任务系统
+    - 5种任务类型：DreamTask、LocalAgentTask、RemoteAgentTask等
+    - 支持后台运行，支持前台转后台
+- 安全层：权限、Hook 和三层防护网
+  - 权限系统概览
+    - utils/permissions/下27个文件，完整权限模型
+    - 包含PermissionMode、PermissionRule、风险分类、路径校验等
+  - Hook系统：不只是事件钩子
+    - 支持三个时点：PreToolUse、PostToolUse、PostToolUseFailure
+    - Pre-hook可返回权限决策、修改输入、阻断流程、补充上下文
+  - resolveHookPermissionDecision：安全粘合层
+    - 规则：Hook allow不绕过settings deny，Hook deny直接生效
+    - 强大但受控，保证安全不被绕过
+  - 三层防护网
+    - 第一层：Speculative Classifier提前预判风险
+    - 第二层：Hook Policy Layer运行时策略调整
+    - 第三层：Permission Decision最终权限决策
+    - 三层配合互不绕过
+- 生态：Skill、Plugin、MCP
+  - Skill：带元数据的workflow package
+    - 形态：带frontmatter元数据的markdown文件
+    - 可以声明allowed-tools、model等，按需注入上下文
+  - Plugin：模型行为层面的扩展
+    - 能提供markdown命令、hooks、MCP配置、模型hint等
+    - 能改变模型行为，修改prompt和权限规则
+  - MCP：工具桥 + 行为说明注入
+    - 同时提供：新工具注册 + 使用说明注入prompt
+    - 让模型知道什么时候怎么用工具
+  - 生态关键：模型感知自己的能力
+    - 通过skills列表、MCP instructions等通道让模型感知扩展能力
+- 上下文经济学：Token 就是预算
+  - 四道压缩机制
+    - 优先级：Snip Compact → Micro Compact → Context Collapse → Auto Compact
+    - 轻量压缩达标就不执行重量压缩
+  - Reactive Compact：API 413兜底
+    - 压缩失败返回413后触发一次紧急压缩重试
+    - 防循环设计，每个turn只尝试一次
+  - Token Budget
+    - 追踪token使用，接近目标时提示模型继续
+    - 适合长任务，避免模型提前停止
+  - 其他上下文优化
+    - Skill按需注入、MCP instructions按连接注入、预取、大结果持久化
+- 产品化：从 prototype 到 product
+  - 生命周期管理
+    - 完整处理：记录对话、写元数据、性能追踪、清理状态、杀进程等
+    - 解决第二天问题：任务续跑、脏状态清理、泄漏处理
+  - Bridge系统
+    - 实现远程控制和IDE集成，支持不同环境桥接
+  - State管理
+    - 统一管理所有运行时状态：权限、MCP连接、配置等
+  - UI层
+    - React + Ink构建完整TUI应用，支持弹窗、进度条、diff显示等
+  - Telemetry
+    - 覆盖事件追踪、成本追踪、限流管理
+- 从源码提炼的设计原则
+  - 原则1：不信任模型的自觉性
+    - 好行为写成制度，不依赖临场发挥
+  - 原则2：把角色拆开
+    - 做事和验收分离，避免偏见
+  - 原则3：工具调用要有治理
+    - 模型调用工具需经过多层校验和治理
+  - 原则4：上下文是预算
+    - token有成本，缓存、压缩、按需加载
+  - 原则5：安全层要互不绕过
+    - 多层防护互相配合，任何一层不能绕过其他层
+  - 原则6：生态的关键是模型感知
+    - 必须让模型知道自己有哪些扩展能力
+  - 原则7：产品化在于处理第二天
+    - 解决生命周期问题，不止满足第一天跑通
+- 附录：核心文件索引
+  - 入口与主循环：cli.tsx、main.tsx、query.ts等
+  - Prompt系统：prompts.ts、systemPromptSections.ts等
+  - 工具执行：toolExecution.ts、toolHooks.ts等
+  - Agent系统：AgentTool.tsx、runAgent.ts等
+  - 权限与安全：permissions目录下多个文件
+  - 生态扩展：skills目录、plugins系统、MCP服务
+  - 上下文管理：压缩系统、会话记忆、token预算
+</script>
+</div>
+</body></html>

@@ -1,0 +1,222 @@
+---
+name: studio-quiz
+version: "1.0"
+description: >
+  基于内容生成互动测验（Quiz）。支持多种题型（选择、判断、填空、简答），
+  输出可分享的互动网页或打印版 PDF。触发条件：用户要求生成测验、考试、练习题、问答。
+trigger_keywords:
+  - 生成测验
+  - 生成考试
+  - 练习题
+  - 问答
+  - quiz
+  - exam
+  - test
+  - assessment
+tools:
+  - llm_generate           # 生成题目内容
+  - code_validator         # 验证 HTML/JS
+  - file_save              # 保存文件
+input_schema:
+  required:
+    - content              # 原文内容或知识点
+  optional:
+    - question_types       # 题型: [choice, true_false, fill_blank, short_answer]
+    - question_count       # 题目数量，默认 10
+    - difficulty           # 难度: easy|medium|hard|mixed
+    - format               # 输出格式: interactive|print|both
+    - language             # 语言，默认 zh-CN
+    - title                # 测验标题
+    - show_answers         # 是否显示答案，默认 true
+    - time_limit           # 建议时长（分钟）
+output_schema:
+  fields:
+    - job_id
+    - status
+    - quiz_url             # 互动测验 URL
+    - pdf_url              # 打印版 PDF URL
+    - question_count
+    - difficulty
+    - estimated_time
+    - error
+question_type_options:
+  choice:
+    desc: 单选题（A/B/C/D）
+    icon: "○"
+  true_false:
+    desc: 判断题（正确/错误）
+    icon: "☐"
+  fill_blank:
+    desc: 填空题（填写答案）
+    icon: "___"
+  short_answer:
+    desc: 简答题（文字回答）
+    icon: "☰"
+difficulty_levels:
+  easy:
+    desc: 简单（基础概念，直接回忆）
+    time_per_question: 30
+  medium:
+    desc: 中等（理解应用，简单分析）
+    time_per_question: 60
+  hard:
+    desc: 困难（综合分析，批判思维）
+    time_per_question: 120
+  mixed:
+    desc: 混合（各难度题目组合）
+    time_per_question: 60
+format_options:
+  interactive:
+    desc: 互动网页（在线答题、自动评分）
+    features: [计时器, 即时反馈, 成绩统计, 答案解析]
+  print:
+    desc: 打印版（PDF，适合纸质考试）
+    features: [清晰排版, 答题区, 答案页]
+  both:
+    desc: 同时生成两种格式
+    features: [互动版 + 打印版]
+limits:
+  max_questions: 50
+  max_content_length: 10000
+---
+
+# Studio Quiz Skill — 测验生成
+
+## 角色与目标
+
+你是 YouMind Studio 的教育内容专家。你能基于提供的材料生成高质量的测验题目，帮助用户检验学习效果或进行知识评估。
+
+## 工作流程
+
+### Step 1：分析内容和学习目标
+
+分析提供的内容，确定：
+- **核心知识点**：必须掌握的关键概念
+- **细节信息**：具体数据、事实、步骤
+- **应用场景**：需要理解后应用的内容
+
+### Step 2：设计题目分布
+
+根据难度和内容特点分配题型：
+
+```
+Easy 难度（40%）：
+- 基础概念识别
+- 直接事实回忆
+- 简单判断
+
+Medium 难度（40%）：
+- 概念理解
+- 简单应用
+- 关系分析
+
+Hard 难度（20%）：
+- 综合分析
+- 批判性思考
+- 跨概念联系
+```
+
+### Step 3：生成题目
+
+**单选题示例**：
+```
+题目：什么是人工智能的核心特征？
+A. 高速计算
+B. 模仿人类智能行为（正确答案）
+C. 大数据存储
+D. 图形界面
+
+解析：人工智能的核心是模拟人类的认知功能，包括学习、推理、感知等。
+```
+
+**判断题示例**：
+```
+题目：机器学习是人工智能的一个子集。（正确）
+
+解析：机器学习是实现人工智能的一种方法，属于人工智能的子领域。
+```
+
+**填空题示例**：
+```
+题目：机器学习的主要三种类型是______、______和______。
+
+答案：监督学习、无监督学习、强化学习
+```
+
+### Step 4：生成互动网页
+
+生成自包含的 HTML 文件：
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>测验标题</title>
+  <style>
+    /* 现代化测验样式 */
+    :root {
+      --primary: #4f46e5;
+      --success: #10b981;
+      --error: #ef4444;
+      --bg: #f9fafb;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); }
+    .question { background: white; border-radius: 12px; padding: 24px; margin: 16px 0; }
+    .options { display: flex; flex-direction: column; gap: 12px; }
+    .option { padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; cursor: pointer; }
+    .option:hover { border-color: var(--primary); }
+    .option.correct { background: #d1fae5; border-color: var(--success); }
+    .option.wrong { background: #fee2e2; border-color: var(--error); }
+    .submit-btn { background: var(--primary); color: white; padding: 12px 24px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="quiz-container">
+    <h1>测验标题</h1>
+    <div id="questions">
+      <!-- 题目动态插入 -->
+    </div>
+    <div class="results" id="results" style="display:none;">
+      <h2>测验结果</h2>
+      <p>得分：<span id="score"></span></p>
+    </div>
+  </div>
+  <script>
+    // 测验逻辑：计时、答题、评分、显示解析
+  </script>
+</body>
+</html>
+```
+
+## 内容质量规范
+
+### 题目设计原则
+1. **清晰明确**：题干无歧义，选项互斥
+2. **内容相关**：题目必须基于提供的材料
+3. **难度递进**：从简单到复杂
+4. **避免陷阱**：不设置易混淆的干扰项
+
+### 答案解析要求
+- 解释正确答案的原因
+- 说明其他选项为什么不正确
+- 关联到原文内容
+
+### 互动功能
+- 计时器显示
+- 答题进度条
+- 即时反馈（正确/错误）
+- 答案解析展示
+- 成绩统计与分享
+
+## 输出示例
+
+```
+✅ 测验生成完成！
+
+📋 《AI 基础概念测验》
+📝 共 15 题（单选 8 题 + 判断 4 题 + 简答 3 题）
+⏱️ 建议时长：15 分钟
+📊 难度分布：简单 40% | 中等 40% | 困难 20%
+
+[🖥 开始测验] [📄 打印版]
+```

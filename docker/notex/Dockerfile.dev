@@ -1,0 +1,11 @@
+# Dev image: Air live-reload for cmd/notex. Mount repo at /src (see docker-compose notex-dev).
+FROM golang:1.25-bookworm
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/* \
+  && go install github.com/air-verse/air@v1.61.5
+ENV PATH="/go/bin:${PATH}"
+COPY go.mod go.sum ./
+RUN go mod download
+EXPOSE 8787
+CMD ["air", "-c", "docker/notex/air.toml"]

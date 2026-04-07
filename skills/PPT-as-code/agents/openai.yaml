@@ -1,0 +1,4 @@
+interface:
+  display_name: "PPT as Code"
+  short_description: "Build creator-first HTML presentations with safe file and network fallbacks"
+  default_prompt: "Use $ppt-as-code to plan or build an HTML-based presentation with staged artifacts, confirmed visual decisions, and graceful fallbacks when file persistence or web search is unavailable."

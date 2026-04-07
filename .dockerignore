@@ -1,0 +1,12 @@
+.git/
+bin/
+dist/
+tmp/
+coverage/
+*.test
+.env
+.env.*
+docker-compose*.yml
+web/node_modules/
+web/dist/
+three/

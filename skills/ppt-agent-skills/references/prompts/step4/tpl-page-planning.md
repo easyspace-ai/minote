@@ -1,0 +1,92 @@
+# Stage 1: Page Planning -- 第 {{PAGE_NUM}} 页（共 {{TOTAL_PAGES}} 页）
+
+> **【系统级强制指令 / CRITICAL OVERRIDE】**
+> 本 prompt 已包含了你在此阶段所需的**全部**任务目标与 Playbook 细则。
+> **严格禁止调用工具去读取外层的 `SKILL.md` 或主控全局规则文件！**
+>
+> 本阶段的唯一目标：产出 `{{PLANNING_OUTPUT}}`。字段名和枚举值以 validator 合同为准，**但在具体排版布局策略与内容表现形式上，你拥有极大的设计和创新自由度！** 后续配备了非常严格完善的像素级图审环节，因此**不要害怕打破沉闷陈规，请尽情发挥你的策划创意**。
+> 若外层 orchestrator 已提供阶段推进协议，则外层协议优先于本 prompt 中的完成信号描述。
+
+这是你为第 {{PAGE_NUM}} 页执行的**第一阶段核心任务**：策划定骨稿。
+你暂时不要写 HTML 代码，全力填好并校验 `{{PLANNING_OUTPUT}}`。
+
+---
+
+## Playbook（执行细则）
+
+{{PLAYBOOK}}
+
+---
+
+## Design Principles Quick Reference
+
+{{PRINCIPLES_CHEATSHEET}}
+
+---
+
+## 任务包
+
+| 项目 | 路径/值 |
+|------|--------|
+| 页码 | {{PAGE_NUM}} / {{TOTAL_PAGES}} |
+| 需求 | `{{REQUIREMENTS_PATH}}` |
+| 大纲 | `{{OUTLINE_PATH}}` |
+| 素材 | `{{BRIEF_PATH}}` |
+| 风格 | `{{STYLE_PATH}}` |
+| 图片素材目录 | `{{IMAGES_DIR}}` |
+| SKILL 目录 | `{{SKILL_DIR}}` |
+| 资源目录 | `{{REFS_DIR}}` |
+
+---
+
+## 产物路径
+
+- 策划稿 JSON：`{{PLANNING_OUTPUT}}`
+- 文件内容必须是**纯 JSON 对象**（可直接写对象，也可包在 ```json fenced block 中），不要夹杂说明性 prose。
+
+---
+
+## 执行链路（固定顺序，不得跳步）
+
+1. 读取 `{{OUTLINE_PATH}}` 中第 {{PAGE_NUM}} 页的定义（只关注你这一页）
+2. 深度读取 `{{REQUIREMENTS_PATH}}`，将其中的【受众画像】、【目标动作】和【版面心智】作为单页选型和内容设计的最高约束（例如：对底层技术受众放大图表卡片，对合作方主打对比及成果锚点）。
+3. 读取 `{{BRIEF_PATH}}` 获取可用素材
+4. 读取 `{{STYLE_PATH}}` 提取 `mood_keywords`、`variation_strategy`、`decoration_dna` 做情绪定调
+5. 加载本地已有的外部**图片清单**：
+   ```bash
+   python3 {{SKILL_DIR}}/scripts/resource_loader.py images --images-dir {{IMAGES_DIR}}
+   ```
+6. 加载支持的**组件/图表菜单**说明（菜单层，只含标题+引用摘要）：
+   ```bash
+   python3 {{SKILL_DIR}}/scripts/resource_loader.py menu --refs-dir {{REFS_DIR}}
+   ```
+7. **回答以下设计提问来驱动你的资源选择决策**（不要查表套用，你是设计师不是填表员），然后决定 `page_type`、`layout_hint`、`cards[].card_type`、`chart.chart_type`、`resource_ref`、`image.mode`、排版策略等。
+
+### 设计决策驱动提问
+
+在确定布局和资源之前，先回答这 4 个问题（可在心中推演，不需要写入产物）：
+
+1. **观众在这一页应该先看到什么？** → 决定视觉锚点和主次关系
+2. **这一页的信息是怎么"流动"的？** → 决定空间布局和视觉动线
+3. **这一页和上一页的视觉感受应该有什么不同？** → 决定节奏变化
+4. **在菜单中的工具里，哪些能最好地服务上面 3 个答案？** → 决定 layout_hint、card_type、chart、resource_ref
+
+> **重要**：菜单里的工具是调色盘而非说明书。同样的数据可以用完全不同的工具和布局来表达，关键是你想让观众产生什么感受。设计原则参考文件（`references/principles/`）和数据类型映射表（`references/design-runtime/data-type-visual-mapping.md`）只在你需要灵感时查阅，不是强制执行的铁律。
+
+**填写 `resources` 字段时必须说明选择理由**（推荐写入 `resources.resource_rationale`），例如回答"为什么用这个布局/组件能最好地让观众产生我想要的感受"。
+8. 将完整 planning 写入 `{{PLANNING_OUTPUT}}`。
+9. 自审（必须执行，不得跳过）：
+   ```bash
+   python3 {{SKILL_DIR}}/scripts/planning_validator.py $(dirname {{PLANNING_OUTPUT}}) --refs {{REFS_DIR}} --page {{PAGE_NUM}}
+   ```
+10. 修复所有 ERROR（WARNING 建议修复）。
+11. 完成信号：输出 `--- STAGE 1 COMPLETE: {{PLANNING_OUTPUT}} ---`，然后按外层 orchestrator 协议继续下一阶段
+12. 不要把当前阶段的完成信号误当作整页任务结束。
+
+---
+
+## 阶段边界
+
+- 本阶段：只写 planning JSON，不写 HTML
+- 下一阶段：orchestrator 会指引你进入 HTML 生成
+- 消费规则：planning 阶段只读资源的 `> 引用层`（菜单），HTML 阶段才读正文层

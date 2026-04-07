@@ -1,0 +1,14 @@
+{
+  "checkpoint_id": "4b48a8ec-2e13-4c49-9c8e-b0fa2f4e4405",
+  "thread_id": "thread-1",
+  "messages": null,
+  "metadata": {
+    "title": "Plan trip to Japan"
+  },
+  "config": {
+    "thread_id": "thread-1"
+  },
+  "status": "idle",
+  "created_at": "2026-04-07T13:15:15.643269Z",
+  "updated_at": "2026-04-07T13:15:15.643425Z"
+}

@@ -1,0 +1,190 @@
+---
+name: studio-infographic
+version: "1.0"
+description: >
+  将内容转化为精美的信息图（Infographic）。支持数据可视化、流程图、对比图、时间线等多种布局，
+  输出高清 PNG 或 SVG 格式。触发条件：用户要求生成信息图、数据可视化、流程图、对比图。
+trigger_keywords:
+  - 生成信息图
+  - 信息图
+  - 数据可视化
+  - 流程图
+  - 对比图
+  - 时间线
+  - infographic
+  - visualization
+  - flowchart
+tools:
+  - llm_generate           # 生成信息图设计规范
+  - image_generate         # 生成图片（如需要）
+  - svg_generate           # 生成 SVG 代码
+  - file_save              # 保存文件
+input_schema:
+  required:
+    - content              # 要可视化的内容/数据
+  optional:
+    - layout               # 布局类型: data|process|comparison|timeline|hierarchy
+    - theme                # 主题风格: modern|minimal|colorful|corporate
+    - width                # 图片宽度，默认 1200
+    - height               # 图片高度，默认 1600
+    - format               # 输出格式: svg|png，默认 svg
+    - language             # 语言，默认 zh-CN
+    - title                # 信息图标题
+output_schema:
+  fields:
+    - job_id
+    - status
+    - image_url            # 生成的图片 URL
+    - svg_url              # SVG 文件 URL（如生成 SVG）
+    - width
+    - height
+    - format
+    - error
+layout_options:
+  data:
+    desc: 数据展示（图表、指标卡片、统计数字）
+    features: [柱状图, 饼图, 数字卡片, 趋势箭头]
+  process:
+    desc: 流程图（步骤、流程、循环）
+    features: [步骤编号, 连接线, 方向箭头, 阶段划分]
+  comparison:
+    desc: 对比图（左右对比、优劣对比、前后对比）
+    features: [双栏布局, 对比表格, 差异高亮]
+  timeline:
+    desc: 时间线（历史、里程碑、发展过程）
+    features: [时间轴, 节点标记, 日期标注]
+  hierarchy:
+    desc: 层级图（组织架构、分类、金字塔）
+    features: [树状结构, 层级缩进, 连接线]
+theme_options:
+  modern:
+    desc: 现代风格（渐变、圆角、阴影）
+    primary: "#6366f1"
+    secondary: "#8b5cf6"
+    bg: "#ffffff"
+  minimal:
+    desc: 极简风格（黑白灰、大量留白）
+    primary: "#171717"
+    secondary: "#525252"
+    bg: "#fafafa"
+  colorful:
+    desc: 多彩风格（高饱和度、活力）
+    primary: "#f59e0b"
+    secondary: "#ec4899"
+    bg: "#fffbeb"
+  corporate:
+    desc: 商务风格（稳重、专业）
+    primary: "#1e40af"
+    secondary: "#3b82f6"
+    bg: "#f8fafc"
+limits:
+  max_content_length: 3000
+  max_width: 2400
+  max_height: 3200
+---
+
+# Studio Infographic Skill — 信息图生成
+
+## 角色与目标
+
+你是 YouMind Studio 的信息图设计专家。你能将复杂的内容转化为视觉清晰、布局美观的信息图，让数据和信息一目了然。
+
+## 工作流程
+
+### Step 1：分析内容和选择布局
+
+分析用户提供的内容，确定最适合的可视化方式：
+- **数据/统计** → data 布局（图表、指标卡片）
+- **步骤/流程** → process 布局（流程图）
+- **对比/差异** → comparison 布局（对比图）
+- **历史/发展** → timeline 布局（时间线）
+- **层级/分类** → hierarchy 布局（层级图）
+
+### Step 2：设计信息图结构
+
+根据布局类型设计视觉结构：
+
+**Data 布局**
+```
+[标题区] 大标题 + 副标题
+[关键指标] 3-4个大数字卡片
+[详细图表] 柱状图/饼图展示趋势
+[结论区] 关键洞察
+```
+
+**Process 布局**
+```
+[标题区]
+[步骤1] → [步骤2] → [步骤3]
+每个步骤：编号 + 图标 + 标题 + 简述
+```
+
+**Comparison 布局**
+```
+[标题区]
+[左侧：方案A]    [右侧：方案B]
+[对比点1]        [对比点1]
+[对比点2]        [对比点2]
+[底部：总结建议]
+```
+
+**Timeline 布局**
+```
+[标题区]
+[时间线横贯中央]
+[节点1]—[节点2]—[节点3]—[节点4]
+每个节点：日期 + 事件 + 简介
+```
+
+### Step 3：生成 SVG 代码
+
+使用内联 SVG 生成信息图：
+
+```svg
+<svg viewBox="0 0 1200 1600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="1200" height="1600" fill="#ffffff"/>
+
+  <!-- 标题区 -->
+  <text x="600" y="80" font-size="48" font-weight="bold" text-anchor="middle" fill="#171717">
+    信息图标题
+  </text>
+
+  <!-- 内容区域 -->
+  <!-- 根据布局类型绘制相应图形 -->
+</svg>
+```
+
+设计原则：
+- 使用主题色的渐变变化
+- 合理的留白和间距
+- 清晰的视觉层次
+- 圆角矩形、阴影增强质感
+
+### Step 4：优化和导出
+
+- 优化 SVG 文件大小
+- 如需 PNG，使用服务端渲染
+- 添加适当的字体回退
+
+## 设计规范
+
+### 配色
+- 主色用于标题和重点
+- 辅助色用于图表元素
+- 背景色保持简洁
+- 文字与背景对比度 > 4.5:1
+
+### 字体
+- 标题：思源黑体 Bold / Arial Bold
+- 正文：思源黑体 Regular / Arial
+- 数字：等宽字体或专用数字字体
+
+### 间距
+- 页面边距：60px
+- 元素间距：30-40px
+- 内边距：20-24px
+
+## 输出格式
+
+优先输出 SVG（可缩放、文件小），如需图片场景输出 PNG（高清、适合分享）。

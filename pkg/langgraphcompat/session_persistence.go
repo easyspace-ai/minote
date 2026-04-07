@@ -1,0 +1,413 @@
+package langgraphcompat
+
+import (
+	"bufio"
+	"crypto/md5"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"mime"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/easyspace-ai/minote/pkg/models"
+	"github.com/easyspace-ai/minote/pkg/tools"
+	"github.com/google/uuid"
+)
+
+type persistedSession struct {
+	CheckpointID string           `json:"checkpoint_id,omitempty"`
+	ThreadID     string           `json:"thread_id"`
+	Messages     []models.Message `json:"messages"`
+	Todos        []Todo           `json:"todos,omitempty"`
+	Values       map[string]any   `json:"values,omitempty"`
+	Metadata     map[string]any   `json:"metadata,omitempty"`
+	Config       map[string]any   `json:"config,omitempty"`
+	Status       string           `json:"status"`
+	CreatedAt    time.Time        `json:"created_at"`
+	UpdatedAt    time.Time        `json:"updated_at"`
+}
+
+type persistedHistoryEntry struct {
+	CheckpointID string `json:"checkpoint_id"`
+	persistedSession
+}
+
+func (s *Server) loadPersistedSessions() error {
+	threadsRoot := filepath.Join(s.dataRoot, "threads")
+	entries, err := os.ReadDir(threadsRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	sessions := make(map[string]*Session, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		threadID := strings.TrimSpace(entry.Name())
+		if threadID == "" {
+			continue
+		}
+		session, err := s.readPersistedSession(threadID)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return err
+		}
+		sessions[threadID] = session
+	}
+
+	s.sessionsMu.Lock()
+	for threadID, session := range sessions {
+		s.sessions[threadID] = session
+	}
+	s.sessionsMu.Unlock()
+	return nil
+}
+
+func (s *Server) readPersistedSession(threadID string) (*Session, error) {
+	data, err := os.ReadFile(s.sessionStatePath(threadID))
+	if err != nil {
+		return nil, err
+	}
+
+	var stored persistedSession
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(stored.ThreadID) == "" {
+		stored.ThreadID = threadID
+	}
+	if stored.Metadata == nil {
+		stored.Metadata = map[string]any{}
+	}
+	if stored.Config == nil {
+		stored.Config = defaultThreadConfig(stored.ThreadID)
+	}
+	if stored.Status == "" {
+		stored.Status = "idle"
+	}
+	if stored.CreatedAt.IsZero() {
+		stored.CreatedAt = time.Now().UTC()
+	}
+	if stored.UpdatedAt.IsZero() {
+		stored.UpdatedAt = stored.CreatedAt
+	}
+	if strings.TrimSpace(stored.CheckpointID) == "" {
+		stored.CheckpointID = s.latestPersistedCheckpoint(threadID)
+	}
+
+	return &Session{
+		CheckpointID: stored.CheckpointID,
+		ThreadID:     stored.ThreadID,
+		Messages:     append([]models.Message(nil), stored.Messages...),
+		Todos:        append([]Todo(nil), stored.Todos...),
+		Values:       copyMetadataMap(stored.Values),
+		Metadata:     copyMetadataMap(stored.Metadata),
+		Configurable: copyMetadataMap(stored.Config),
+		Status:       stored.Status,
+		PresentFiles: tools.NewPresentFileRegistry(),
+		CreatedAt:    stored.CreatedAt,
+		UpdatedAt:    stored.UpdatedAt,
+	}, nil
+}
+
+func (s *Server) persistSessionSnapshot(session *Session) error {
+	if session == nil || strings.TrimSpace(session.ThreadID) == "" {
+		return nil
+	}
+	session.CheckpointID = uuid.New().String()
+	s.syncSessionCheckpoint(session.ThreadID, session.CheckpointID, session.UpdatedAt)
+
+	path := s.sessionStatePath(session.ThreadID)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	payload := persistedSession{
+		CheckpointID: session.CheckpointID,
+		ThreadID:     session.ThreadID,
+		Messages:     append([]models.Message(nil), session.Messages...),
+		Todos:        append([]Todo(nil), session.Todos...),
+		Values:       copyMetadataMap(session.Values),
+		Metadata:     copyMetadataMap(session.Metadata),
+		Config:       copyMetadataMap(session.Configurable),
+		Status:       session.Status,
+		CreatedAt:    session.CreatedAt,
+		UpdatedAt:    session.UpdatedAt,
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+	return s.appendPersistedHistory(session)
+}
+
+func (s *Server) deletePersistedSession(threadID string) error {
+	err := os.Remove(s.sessionStatePath(threadID))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	err = os.Remove(s.sessionHistoryPath(threadID))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) sessionStatePath(threadID string) string {
+	return filepath.Join(s.dataRoot, "threads", threadID, "session.json")
+}
+
+func (s *Server) sessionHistoryPath(threadID string) string {
+	return filepath.Join(s.dataRoot, "threads", threadID, "history.jsonl")
+}
+
+func (s *Server) appendPersistedHistory(session *Session) error {
+	entry := persistedHistoryEntry{
+		CheckpointID: session.CheckpointID,
+		persistedSession: persistedSession{
+			CheckpointID: session.CheckpointID,
+			ThreadID:     session.ThreadID,
+			Messages:     append([]models.Message(nil), session.Messages...),
+			Todos:        append([]Todo(nil), session.Todos...),
+			Values:       copyMetadataMap(session.Values),
+			Metadata:     copyMetadataMap(session.Metadata),
+			Config:       copyMetadataMap(session.Configurable),
+			Status:       session.Status,
+			CreatedAt:    session.CreatedAt,
+			UpdatedAt:    session.UpdatedAt,
+		},
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+
+	path := s.sessionHistoryPath(session.ThreadID)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) syncSessionCheckpoint(threadID, checkpointID string, updatedAt time.Time) {
+	if s == nil || strings.TrimSpace(threadID) == "" || strings.TrimSpace(checkpointID) == "" {
+		return
+	}
+
+	s.sessionsMu.Lock()
+	defer s.sessionsMu.Unlock()
+
+	session := s.sessions[threadID]
+	if session == nil {
+		return
+	}
+	if session.CheckpointID != "" && updatedAt.Before(session.UpdatedAt) {
+		return
+	}
+	session.CheckpointID = checkpointID
+}
+
+func (s *Server) latestPersistedCheckpoint(threadID string) string {
+	entries, err := s.readPersistedHistory(threadID)
+	if err != nil || len(entries) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(entries[len(entries)-1].CheckpointID)
+}
+
+func (s *Server) readPersistedHistory(threadID string) ([]persistedHistoryEntry, error) {
+	f, err := os.Open(s.sessionHistoryPath(threadID))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+
+	entries := make([]persistedHistoryEntry, 0)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry persistedHistoryEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(entry.ThreadID) == "" {
+			entry.ThreadID = threadID
+		}
+		if strings.TrimSpace(entry.CheckpointID) == "" {
+			entry.CheckpointID = uuid.New().String()
+		}
+		if entry.Metadata == nil {
+			entry.Metadata = map[string]any{}
+		}
+		if entry.Config == nil {
+			entry.Config = defaultThreadConfig(entry.ThreadID)
+		}
+		if entry.Status == "" {
+			entry.Status = "idle"
+		}
+		if entry.CreatedAt.IsZero() {
+			entry.CreatedAt = entry.UpdatedAt
+		}
+		if entry.UpdatedAt.IsZero() {
+			entry.UpdatedAt = entry.CreatedAt
+		}
+		entries = append(entries, entry)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func collectArtifactPaths(root string, virtualPrefix string) []string {
+	type artifactEntry struct {
+		path     string
+		modified time.Time
+	}
+
+	virtualPrefix = "/" + strings.Trim(strings.TrimSpace(virtualPrefix), "/")
+	if virtualPrefix == "/" {
+		virtualPrefix = ""
+	}
+
+	entries := make([]artifactEntry, 0)
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
+		}
+		entries = append(entries, artifactEntry{
+			path:     virtualPrefix + "/" + filepath.ToSlash(rel),
+			modified: info.ModTime(),
+		})
+		return nil
+	})
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].modified.Equal(entries[j].modified) {
+			return entries[i].path < entries[j].path
+		}
+		return entries[i].modified.After(entries[j].modified)
+	})
+
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		paths = append(paths, entry.path)
+	}
+	return paths
+}
+
+func collectArtifactFiles(root string, virtualPrefix string) []tools.PresentFile {
+	type artifactEntry struct {
+		file tools.PresentFile
+	}
+
+	virtualPrefix = "/" + strings.Trim(strings.TrimSpace(virtualPrefix), "/")
+	if virtualPrefix == "/" {
+		virtualPrefix = ""
+	}
+
+	entries := make([]artifactEntry, 0)
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
+		}
+		entries = append(entries, artifactEntry{
+			file: tools.PresentFile{
+				ID:         autodiscoveredPresentFileID(virtualPrefix + "/" + filepath.ToSlash(rel)),
+				Path:       virtualPrefix + "/" + filepath.ToSlash(rel),
+				SourcePath: path,
+				MimeType:   detectArtifactMimeType(path),
+				CreatedAt:  info.ModTime().UTC(),
+			},
+		})
+		return nil
+	})
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].file.CreatedAt.Equal(entries[j].file.CreatedAt) {
+			return entries[i].file.Path < entries[j].file.Path
+		}
+		return entries[i].file.CreatedAt.After(entries[j].file.CreatedAt)
+	})
+
+	files := make([]tools.PresentFile, 0, len(entries))
+	for _, entry := range entries {
+		files = append(files, entry.file)
+	}
+	return files
+}
+
+func detectArtifactMimeType(path string) string {
+	if ext := strings.TrimSpace(filepath.Ext(path)); ext != "" {
+		if mimeType := mime.TypeByExtension(strings.ToLower(ext)); mimeType != "" {
+			return mimeType
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return "application/octet-stream"
+	}
+	return http.DetectContentType(data)
+}
+
+func autodiscoveredPresentFileID(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	// Keep IDs deterministic for files surfaced from disk rather than tools.
+	sum := md5.Sum([]byte(path))
+	return fmt.Sprintf("auto_%x", sum[:6])
+}
+
+func copyMetadataMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}

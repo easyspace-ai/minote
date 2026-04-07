@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code 源码架构深度解析 V2.0</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .author {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #2980b9;
+            margin-top: 30px;
+            border-left: 4px solid #3498db;
+            padding-left: 10px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 20px;
+        }
+        ul {
+            padding-left: 25px;
+        }
+        .table-of-contents {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+        }
+        .table-of-contents a {
+            color: #2980b9;
+            text-decoration: none;
+        }
+        .table-of-contents a:hover {
+            text-decoration: underline;
+        }
+        .principle {
+            background: #e8f4fc;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .file-index {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Claude Code 源码架构深度解析 V2.0</h1>
+        <div class="author">
+            <p>从 4756 个文件里读懂 Agent 系统工程<br>作者：Xiao Tan AI | April 1, 2026</p>
+        </div>
+
+        <div class="table-of-contents">
+            <h3>目录</h3>
+            <ol>
+                <li><a href="#section1">全局视角：CLI 工具 vs Agent Operating System</a></li>
+                <li><a href="#section2">引擎：主循环与 Prompt 编排</a></li>
+                <li><a href="#section3">工具系统：42 个工具和一条治理流水线</a></li>
+                <li><a href="#section4">多 Agent 体系：分工和调度</a></li>
+                <li><a href="#section5">安全层：权限、Hook 和三层防护网</a></li>
+                <li><a href="#section6">生态：Skill、Plugin、MCP</a></li>
+                <li><a href="#section7">上下文经济学：Token 就是预算</a></li>
+                <li><a href="#section8">产品化：从 prototype 到 product</a></li>
+                <li><a href="#section9">从源码里提炼出的设计原则</a></li>
+                <li><a href="#section10">附录：核心文件索引</a></li>
+            </ol>
+        </div>
+
+        <section id="section1">
+            <h2>1. 全局视角：CLI 工具 vs Agent Operating System</h2>
+            <h3>1.1 你在看什么</h3>
+            <p>这份报告的素材来自 Claude Code 的 npm 包，从 cli.js.map 的 sourcesContent 提取出完整 TypeScript 源码，共 4756 个文件。市面上大部分开源 coding agent 只有少量文件，而 Claude Code 的 src/ 顶层有超过 50 个模块目录。</p>
+
+            <h3>1.2 代码库规模</h3>
+            <ul>
+                <li>utils/: 564 文件</li>
+                <li>components/: 389 文件</li>
+                <li>commands/: 207 文件</li>
+                <li>tools/: 184 文件</li>
+                <li>services/: 130 文件</li>
+                <li>hooks/: 104 文件</li>
+                <li>ink/ (TUI框架): 96 文件</li>
+                <li>bridge/: 31 文件</li>
+                <li>skills/: 20 文件</li>
+                <li>tasks/: 12 文件</li>
+            </ul>
+            <p>关键文件行数：</p>
+            <ul>
+                <li>main.tsx: 4,683 行</li>
+                <li>toolExecution.ts: 1,745 行</li>
+                <li>query.ts (主循环): 1,729 行</li>
+                <li>AgentTool.tsx: 1,397 行</li>
+                <li>QueryEngine.ts: 1,295 行</li>
+                <li>runAgent.ts: 973 行</li>
+                <li>prompts.ts: 914 行</li>
+                <li>Tool.ts (工具基类): 792 行</li>
+            </ul>
+
+            <h3>1.3 入口层暴露的设计意图</h3>
+            <p>Claude Code 有多个入口：cli.tsx、init.ts、mcp.ts、sdk/，支持 CLI 终端、MCP 协议、SDK 调用、IDE 插件，体现平台化设计。</p>
+            <p>cli.tsx 有 fast-path 分发逻辑：</p>
+            <ul>
+                <li>--version：零模块加载，直接打印版本号退出</li>
+                <li>remote-control：走 bridge 模式，不进主 REPL</li>
+                <li>daemon：走长驻进程模式</li>
+                <li>ps / logs / attach / kill：走后台会话管理</li>
+                <li>--worktree / --tmux：直接 exec 进 tmux，不加载完整 CLI</li>
+            </ul>
+            <p>只有没命中任何 fast-path 时才加载 main.tsx，所有 import 都是 dynamic 按需加载，这是产品化思维的体现，优化高频调用的响应速度。</p>
+
+            <h3>1.4 命令系统不是装饰品</h3>
+            <p>src/commands/ 下有 101 个命令，涵盖 /mcp、/memory、/permissions、/hooks、/plugin、/skills、/tasks、/plan、/review、/agents、/compact、/doctor、/bridge、/teleport 等。命令系统是用户与系统运行时交互的控制面，也是生态的入口，统一加载 plugin commands、skill commands、bundled skills、动态 skills。</p>
+        </section>
+
+        <section id="section2">
+            <h2>2. 引擎：主循环与 Prompt 编排</h2>
+            <p>这是整份报告的地基，Claude Code 的一切能力最终都通过主循环跑出来，通过 prompt 告诉模型该做什么。</p>
+
+            <h3>2.1 一个请求怎么跑起来的</h3>
+            <ol>
+                <li>cli.tsx 分发到 main.tsx</li>
+                <li>main.tsx 初始化状态、注册工具、构造 ToolUseContext</li>
+                <li>用户输入进入 query() 函数</li>
+                <li>进入 queryLoop() 主循环（while(true)）</li>
+                <li>每次迭代：压缩上下文 → 组装 system prompt → 调用 API → 处理工具调用 → 继续或退出</li>
+            </ol>
+
+            <h3>2.2 query.ts：1729 行的状态机</h3>
+            <p>query.ts 是系统心脏，是 async generator，内部 while(true) 循环，通过 state 对象传递状态。每次迭代步骤：</p>
+            <ol>
+                <li>上下文预处理：snip compact → micro compact → context collapse → auto compact，四道压缩机制</li>
+                <li>Token 预算检查：如果 auto compact 关闭，检查是否接近硬限制</li>
+                <li>调用模型 API：发送消息、system prompt、工具定义</li>
+                <li>流式处理响应：边收边处理，完成的 tool_use block 立刻执行</li>
+                <li>错误恢复：prompt 太长尝试 context collapse drain、reactive compact；输出超限注入恢复消息；模型降级切 fallback model</li>
+                <li>Stop hooks：模型停止输出后运行，决定是否继续</li>
+                <li>Token budget：检查是否该继续</li>
+                <li>工具执行：批量执行，通过 runTools() 或 StreamingToolExecutor</li>
+                <li>附件注入：注入 memory attachments、skill discovery、queued commands</li>
+                <li>下一轮：组装新消息列表，回到循环开头</li>
+            </ol>
+            <p>用状态机取代递归，避免长会话爆栈，9 个 continue 点对应不同继续原因。</p>
+
+            <h3>2.3 Streaming Tool Execution：边收边跑</h3>
+            <p>传统做法等模型完整输出再执行，Claude Code 使用 StreamingToolExecutor，模型输出时已完成的 tool_use block 就开始执行，减少用户等待时间。一次 turn 里 5 个工具调用，第一个工具可在模型生成第二个 tool_use 时就跑完。</p>
+
+            <h3>2.4 Prompt 组装：一台精密的拼装机器</h3>
+            <p>getSystemPrompt() 返回字符串数组，每个元素对应一个 section，分为两部分：</p>
+            <ul>
+                <li>静态部分（可缓存）：身份定位、系统运行规范、做任务的行为规范、风险动作规范、工具使用语法、语气风格、输出效率</li>
+                <li>动态部分（按会话注入）：Session guidance、Memory（CLAUDE.md 内容）、环境信息、语言偏好、MCP server instructions、Function result clearing 说明、Token budget 说明</li>
+            </ul>
+            <p>静态与动态部分用 SYSTEM_PROMPT_DYNAMIC_BOUNDARY 标记隔开。</p>
+
+            <h3>2.5 Prompt Cache 经济学</h3>
+            <p>API 层支持 system prompt 前缀缓存，不变内容放前面，可变放后面，提高缓存命中率。动态 section 有缓存机制，只有 DANGEROUS_uncachedSystemPromptSection 创建的才每次重算（如 MCP instructions）。</p>
+
+            <h3>2.6 行为规范：怎么让 AI 工程师不乱来</h3>
+            <p>getSimpleDoingTasksSection() 明确告诉模型：</p>
+            <ul>
+                <li>不要加用户没要求的功能</li>
+                <li>不要过度抽象，三行重复代码好过不成熟的抽象</li>
+                <li>不要给没改的代码加注释和文档字符串</li>
+                <li>不要做不必要的错误处理和兜底逻辑</li>
+                <li>不要设计面向未来的抽象</li>
+                <li>先读代码再改代码</li>
+                <li>不要轻易建新文件</li>
+                <li>不要给时间估计</li>
+                <li>方法失败先诊断，不要盲目重试</li>
+                <li>结果如实汇报，没跑过不要说跑过了</li>
+            </ul>
+            <p>将行为规范制度化，不依赖模型临场发挥，解决常见的 AI 过度发挥问题。</p>
+        </section>
+
+        <section id="section3">
+            <h2>3. 工具系统：42 个工具和一条治理流水线</h2>
+
+            <h3>3.1 Tool 接口设计</h3>
+            <p>Tool.ts 定义完整接口，关键方法：</p>
+            <ul>
+                <li>call(): 执行工具</li>
+                <li>inputSchema: Zod schema 输入校验</li>
+                <li>validateInput(): 细粒度输入校验</li>
+                <li>checkPermissions(): 工具级别权限检查</li>
+                <li>preparePermissionMatcher(): 为 Hook 模式匹配预处理</li>
+                <li>isReadOnly(): 是否只读</li>
+                <li>isDestructive(): 是否有破坏性</li>
+                <li>isConcurrencySafe(): 是否可并发执行</li>
+                <li>prompt(): 动态生成工具 prompt 描述</li>
+                <li>还有 6+ render 方法处理不同 UI 场景</li>
+            </ul>
+            <p>buildTool() 工厂函数提供 fail-closed 默认值：默认不安全串行执行，默认非只读走严格检查，"忘了就严格"避免未配置工具的安全问题。</p>
+
+            <h3>3.2 42 个工具的分类</h3>
+            <ul>
+                <li>文件操作：FileRead、FileEdit、FileWrite、GlobTool、GrepTool、NotebookEdit</li>
+                <li>执行：BashTool、PowerShellTool</li>
+                <li>调度：AgentTool、Task 系列</li>
+                <li>MCP 集成：MCPTool、ListMcpResources、ReadMcpResource、McpAuth</li>
+                <li>Web 能力：WebSearch、WebFetch</li>
+                <li>用户交互：AskUserQuestion、SendMessage</li>
+                <li>模式切换：EnterPlanMode、ExitPlanMode 等</li>
+                <li>其他：SkillTool、SleepTool、TodoWrite、Config 等</li>
+            </ul>
+            <p>每个工具都有独立 prompt.ts，动态生成描述，根据可用工具和权限模式调整。</p>
+
+            <h3>3.3 工具执行 Pipeline</h3>
+            <ol>
+                <li>找工具：通过名字或别名找到 Tool 对象</li>
+                <li>解析 MCP 元数据：提取 server 信息</li>
+                <li>Zod schema 校验：第一道参数校验</li>
+                <li>validateInput(): 工具细粒度校验</li>
+                <li>Speculative classifier：BashTool 提前分析命令风险，Hook 执行时并行运行</li>
+                <li>PreToolUse hooks：运行所有注册 pre-hook</li>
+                <li>解析 Hook 权限结果，综合做出允许/拒绝决策</li>
+                <li>修正输入：根据权限决策修改输入</li>
+                <li>执行 tool.call()：真正跑工具</li>
+                <li>记录 analytics / tracing / OTel</li>
+                <li>PostToolUse hooks：成功后处理</li>
+                <li>构建 tool_result block</li>
+                <li>PostToolUseFailure hooks：失败后处理</li>
+            </ol>
+            <p>Speculative Classifier 提前异步计算，减少用户等待弹窗时间。</p>
+        </section>
+
+        <section id="section4">
+            <h2>4. 多 Agent 体系：分工和调度</h2>
+
+            <h3>4.1 为什么需要多个 Agent</h3>
+            <p>Claude Code 有 6 个内建 Agent：</p>
+            <ul>
+                <li>General Purpose Agent：通用任务执行</li>
+                <li>Explore Agent：纯只读的代码探索</li>
+                <li>Plan Agent：纯规划，不执行</li>
+                <li>Verification Agent：对抗性验证</li>
+                <li>Claude Code Guide Agent：使用指导</li>
+                <li>Statusline Setup Agent：状态栏配置</li>
+            </ul>
+            <p>设计出发点：让一个 Agent 同时做研究、规划、实现、验证很难都做好，职责分离更专业。</p>
+
+            <h3>4.2 Explore Agent：裁剪出来的只读专家</h3>
+            <p>严格禁止创建/修改/删除文件，禁止改变系统状态，只能使用读操作工具，外部用户默认用 Haiku 模型（更快更便宜），探索不需要最强推理，速度优先。权限彻底隔离，避免探索阶段意外修改代码。</p>
+
+            <h3>4.3 Verification Agent：整个系统

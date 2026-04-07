@@ -1,0 +1,312 @@
+# DeerFlow-Go Configuration
+#
+# Copy this file to config.yaml and customize for your environment.
+# Default path: config.yaml in the current working directory.
+# Override with DEERFLOW_CONFIG_PATH or DEER_FLOW_CONFIG_PATH env var.
+#
+# Secrets (API keys) and local overrides: use a `.env` file in the working
+# directory (loaded automatically by services). Example:
+#   DEFAULT_LLM_PROVIDER=ollama
+#   DEFAULT_LLM_MODEL=qwen2.5:latest
+#   OLLAMA_BASE_URL=http://localhost:11434/v1
+#
+# Values in this file can reference env vars as $VAR or ${VAR} in any value.
+
+# ============================================================================
+# Config Version
+# ============================================================================
+config_version: 5
+
+# ============================================================================
+# Logging
+# ============================================================================
+# Supported levels: debug, info, warn, error, off
+log_level: info
+
+# ============================================================================
+# Token Usage Tracking
+# ============================================================================
+# Track LLM token usage per model call (input/output/total tokens)
+token_usage:
+  enabled: false
+
+# ============================================================================
+# Title Generation
+# ============================================================================
+# Automatic conversation title generation settings
+# title:
+#   enabled: true
+#   max_words: 6
+#   max_chars: 50
+#   model_name: ""  # Use default model if empty
+
+# ============================================================================
+# Models Configuration
+# ============================================================================
+# Configure available LLM models. Each model needs a name and model ID.
+# api_key and api_base can override environment-level settings per model.
+
+models:
+  # Example: OpenAI GPT-4
+  # - name: gpt-4
+  #   model: gpt-4
+  #   display_name: GPT-4
+  #   api_key: $OPENAI_API_KEY
+  #   api_base: https://api.openai.com/v1
+  #   supports_vision: true
+  #   timeout: 60         # Request timeout in seconds
+  #   max_retries: 3
+  #   max_tokens: 4096
+  #   temperature: 0.7
+
+  # Example: Anthropic Claude
+  # - name: claude-3.5-sonnet
+  #   model: claude-3-5-sonnet-20241022
+  #   display_name: Claude 3.5 Sonnet
+  #   api_key: $ANTHROPIC_API_KEY
+  #   api_base: https://api.anthropic.com/v1
+  #   supports_thinking: true
+
+  # Example: Google Gemini (via OpenAI-compatible API)
+  # - name: gemini-2.5-pro
+  #   model: gemini-2.5-pro
+  #   display_name: Gemini 2.5 Pro
+  #   api_key: $GEMINI_API_KEY
+  #   api_base: https://generativelanguage.googleapis.com/v1beta/openai
+  #   supports_thinking: true
+  #   supports_vision: true
+
+  # Example: DeepSeek
+  # - name: deepseek-v3
+  #   model: deepseek-chat
+  #   display_name: DeepSeek V3
+  #   api_key: $DEEPSEEK_API_KEY
+  #   api_base: https://api.deepseek.com/v1
+
+  # Example: SiliconFlow (default provider)
+  # - name: qwen3.5-9b
+  #   model: qwen/Qwen3.5-9B
+  #   display_name: Qwen 3.5 9B
+  #   api_key: $SILICONFLOW_API_KEY
+  #   api_base: https://api.siliconflow.cn/v1
+
+# ============================================================================
+# Tools Configuration
+# ============================================================================
+# Configure which search and utility tools are available.
+
+tools:
+  # DuckDuckGo web search (built-in, no API key required)
+  - name: web_search
+    group: web
+    max_results: 5
+
+  # Tavily web search (requires API key)
+  # - name: tavily_search
+  #   group: web
+  #   api_key: $TAVILY_API_KEY
+  #   max_results: 5
+
+  # Image search (built-in DuckDuckGo-based)
+  - name: image_search
+    group: web
+    max_results: 5
+
+# ============================================================================
+# Tool Groups
+# ============================================================================
+# Control which tool groups are active.
+# tool_groups:
+#   - name: web
+#   - name: builtin
+
+# ============================================================================
+# Tool Search
+# ============================================================================
+# tool_search:
+#   enabled: false
+
+# ============================================================================
+# MCP Servers
+# ============================================================================
+# Configure Model Context Protocol servers for external tool integration.
+# Stdio servers run a local command (e.g. npx); no separate daemon — you need
+# Node.js for `npx` and a valid path. Disable (`enabled: false`) or fix the path
+# if you see MCP connect errors.
+#
+# mcp_servers:
+#   filesystem:
+#     type: stdio
+#     enabled: true
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/project"]
+#     description: "Filesystem access within allowed directories"
+#   example-server:
+#     type: stdio
+#     command: npx
+#     args: ["-y", "@example/mcp-server"]
+#     env:
+#       API_KEY: $EXAMPLE_API_KEY
+#     description: "Example MCP server"
+#   remote-server:
+#     type: sse
+#     url: https://example.com/mcp
+#     headers:
+#       Authorization: "Bearer $EXAMPLE_TOKEN"
+
+# ============================================================================
+# ACP Agents
+# ============================================================================
+# External agent integration via Agent Communication Protocol.
+# acp_agents:
+#   claude-code:
+#     description: "Claude Code agent for complex coding tasks"
+#     command: claude
+#     args: ["--print", "--output-format", "text"]
+#     env:
+#       ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+#     auto_approve_permissions:
+#       - "Bash(read:*)"
+#       - "Read(*)"
+
+# ============================================================================
+# Sandbox Configuration
+# ============================================================================
+sandbox:
+  allow_host_bash: false
+  # use: ""                    # Provider: "" (direct), "bwrap", "landlock"
+  # image: ""                  # Docker image for sandbox
+  # port: 0                    # Custom port for sandbox
+  # replicas: 1                # Number of sandbox replicas
+  # bash_output_max_chars: 0   # Max chars for bash output (0 = unlimited)
+  # read_file_output_max_chars: 0
+  # mounts:                    # Custom mount points
+  #   - host_path: /data
+  #     container_path: /mnt/data
+  #     read_only: true
+  # environment:               # Custom environment variables
+  #   PYTHONPATH: /app
+
+# ============================================================================
+# Uploads Configuration
+# ============================================================================
+# Configure file upload handling (used by LangGraph upload conversion and
+# cmd/notex document extraction via pkg/langgraphcompat.ExtractUploadedBytesToMarkdown).
+# Optional: set DOCREADER_ADDR (gRPC) and MARKITDOWN_URL in .env — extraction order is
+# docreader → MarkItDown HTTP → builtin / markitdown CLI (see docker-compose.yml).
+#
+# uploads:
+#   pdf_converter: builtin     # "builtin" or "markitdown" (CLI or HTTP below)
+#   # Base URL of the MarkItDown HTTP service (docker compose: markitdown:8787).
+#   # Host port must match docker-compose MARKITDOWN_PORT; MARKITDOWN_URL in .env overrides this.
+#   markitdown_url: http://127.0.0.1:8787
+
+# ============================================================================
+# Skills Configuration
+# ============================================================================
+# Configure skill discovery paths.
+# skills:
+#   path: ./skills
+#   container_path: /app/skills  # Path inside Docker container
+
+# ============================================================================
+# Subagents Configuration
+# ============================================================================
+subagents:
+  timeout_seconds: 900
+  # max_turns: 8
+  # agents:
+  #   general_purpose:
+  #     timeout_seconds: 600
+  #     max_turns: 5
+  #   bash:
+  #     timeout_seconds: 300
+
+# ============================================================================
+# Memory Configuration
+# ============================================================================
+# Configure long-term memory extraction and injection.
+# memory:
+#   enabled: true
+#   storage_path: ""           # Custom path for file-based storage
+#   debounce_seconds: 30       # Debounce for memory updates
+#   model_name: ""             # LLM model for memory extraction
+#   max_facts: 100             # Max facts to store
+#   injection_enabled: true    # Inject relevant facts into context
+#   max_injection_tokens: 500  # Max tokens for injected facts
+
+# ============================================================================
+# Summarization Configuration
+# ============================================================================
+# LLM-powered conversation history summarization.
+# summarization:
+#   enabled: false
+#   model_name: ""             # LLM model for summarization
+#   trigger:
+#     - type: message_count
+#       value: 30              # Trigger after N messages
+#     - type: token_count
+#       value: 8000            # Trigger after N tokens
+#   keep:
+#     type: last_n_rounds
+#     value: 12                # Keep last N rounds verbatim
+#   summary_prompt: ""         # Custom summarization prompt
+
+# ============================================================================
+# Checkpointer Configuration
+# ============================================================================
+# Configure the state persistence backend.
+# checkpointer:
+#   type: postgres             # "postgres" or "memory"
+#   connection_string: $DATABASE_URL
+
+# ============================================================================
+# Guardrails Configuration
+# ============================================================================
+# Pre-tool-call authorization and safety checks.
+# guardrails:
+#   enabled: false
+#   fail_closed: true
+#   provider:
+#     use: allowlist           # "allowlist", "oap", or "external"
+#     config:
+#       allowed_tools:
+#         - web_search
+#         - bash
+#       denied_tools: []
+#       # For OAP provider:
+#       # passport: $OAP_PASSPORT
+#       # For external provider:
+#       # command: /usr/bin/guardrail-checker
+#       # timeout_seconds: 10
+
+# ============================================================================
+# Tracing Configuration
+# ============================================================================
+# Enable observability tracing for LLM calls and tool executions.
+tracing:
+  enabled: false
+  provider: langsmith         # "langsmith", "langfuse", "otlp", "console"
+  # endpoint: ""              # Custom endpoint URL
+  # api_key: $LANGSMITH_API_KEY
+
+# ============================================================================
+# IM Channels Configuration
+# ============================================================================
+# Enable instant messaging channel integrations.
+# channels:
+#   feishu:
+#     enabled: false
+#     app_id: $FEISHU_APP_ID
+#     app_secret: $FEISHU_APP_SECRET
+#   slack:
+#     enabled: false
+#     bot_token: $SLACK_BOT_TOKEN
+#   telegram:
+#     enabled: false
+#     bot_token: $TELEGRAM_BOT_TOKEN
+#   wecom:
+#     enabled: false
+#     corp_id: $WECOM_CORP_ID
+#     agent_id: $WECOM_AGENT_ID
+#     secret: $WECOM_SECRET

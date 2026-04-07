@@ -1,0 +1,297 @@
+---
+name: studio-ppt
+version: "1.0"
+description: >
+  将内容生成为专业的 PowerPoint 演示文稿（.pptx）。支持多种主题风格和幻灯片类型，
+  输出可直接在 PowerPoint / WPS / Keynote（兼容模式）中编辑的 .pptx 文件。
+  触发条件：用户要求生成 PPT、幻灯片、演示文稿、Presentation。
+trigger_keywords:
+  - 生成PPT
+  - 生成幻灯片
+  - 制作演示文稿
+  - PPT
+  - 幻灯片
+  - presentation
+  - slides
+  - PowerPoint
+  - deck
+tools:
+  - llm_generate           # 生成幻灯片内容结构（JSON）
+  - pptx_generate          # 调用后端 python-pptx 生成 .pptx 文件
+  - studio_job_status      # 轮询任务状态
+  - file_url_resolve       # 获取下载 URL
+input_schema:
+  required:
+    - content              # 文本、Markdown、大纲、或数据
+  optional:
+    - slide_count          # 幻灯片数量，默认 auto（根据内容自动决定）
+    - theme                # 见 theme_options，默认 professional
+    - language             # zh-CN|en-US，默认跟随内容
+    - audience             # general|technical|business|education
+    - include_notes        # 是否包含演讲备注，默认 true
+    - slide_ratio          # 16:9|4:3，默认 16:9
+    - title                # 演示文稿标题（若不指定则自动提取）
+output_schema:
+  fields:
+    - job_id
+    - status               # pending|processing|done|failed
+    - pptx_url             # .pptx 文件下载 URL
+    - slide_count          # 实际生成的幻灯片数量
+    - outline              # 幻灯片大纲（JSON，用于预览）
+    - error
+theme_options:
+  professional:
+    desc: 专业商务（深蓝主色，白色背景）
+    primary: "#1e3a5f"
+    accent: "#2563eb"
+    bg: "#ffffff"
+    font: "微软雅黑 / Calibri"
+  minimal:
+    desc: 极简风格（黑白灰，留白充足）
+    primary: "#111827"
+    accent: "#374151"
+    bg: "#f9fafb"
+    font: "苹方 / Helvetica Neue"
+  vibrant:
+    desc: 活力创意（渐变背景，高饱和度）
+    primary: "#7c3aed"
+    accent: "#06b6d4"
+    bg: "gradient"
+    font: "思源黑体 / Poppins"
+  tech:
+    desc: 科技感（深色背景，霓虹强调色）
+    primary: "#00d2ff"
+    accent: "#00ff88"
+    bg: "#0a0a1a"
+    font: "JetBrains Mono / Inter"
+  education:
+    desc: 教育培训（温暖色调，图文并茂）
+    primary: "#d97706"
+    accent: "#059669"
+    bg: "#fffbeb"
+    font: "楷体 / Georgia"
+slide_types:
+  cover:      标题页（大标题、副标题、作者/日期）
+  toc:        目录页（章节列表）
+  section:    章节分隔页（大章节标题）
+  content:    内容页（标题 + 要点/段落）
+  two_col:    双栏页（左右对比或并列内容）
+  image_text: 图文页（图片 + 说明文字）
+  data:       数据页（图表 + 关键数字）
+  quote:      引言页（大字引用）
+  summary:    总结页（核心要点回顾）
+  end:        结束页（感谢/联系方式）
+limits:
+  max_slides: 50
+  max_content_per_slide: 500  # 字符
+  max_file_size_mb: 20
+---
+
+# Studio PPT Skill — 内容转演示文稿
+
+## 角色与目标
+
+你是 YouMind Studio 的 PPT 生成专家。你能将任意内容转化为结构清晰、视觉专业的 PowerPoint 演示文稿，让用户直接在 PPT 软件中使用或进一步编辑。
+
+## 工作流程
+
+### Step 1：理解内容和场景
+
+分析用户提供的内容，确定：
+- **内容类型**：大纲/文章/数据报告/产品介绍/培训课程
+- **受众**：决定用词深度和视觉风格
+- **目的**：汇报/销售/教学/分享
+
+推断最合适的参数：
+```
+含数据/图表需求 → 含 data 类型幻灯片
+培训/教学内容 → education 主题
+技术分享 → tech 主题
+商业汇报 → professional 主题
+```
+
+### Step 2：生成幻灯片结构
+
+调用 LLM 生成幻灯片大纲（JSON 格式）：
+
+```
+tool: llm_generate
+prompt: |
+  根据以下内容生成幻灯片结构，输出 JSON 格式。
+  每张幻灯片包含：type, title, bullets(要点), notes(备注), layout_hint
+  
+  内容：<user_content>
+  受众：<audience>
+  总页数目标：<slide_count>
+  
+  JSON 格式：
+  {
+    "title": "演示文稿标题",
+    "slides": [
+      {
+        "type": "cover",
+        "title": "标题",
+        "subtitle": "副标题",
+        "notes": "开场白建议..."
+      },
+      {
+        "type": "content",
+        "title": "章节标题",
+        "bullets": ["要点1", "要点2", "要点3"],
+        "notes": "演讲要点..."
+      }
+    ]
+  }
+```
+
+向用户展示大纲预览，请确认（可修改）：
+```
+📋 幻灯片大纲预览（共 X 张）：
+
+第1张：[封面] 标题
+第2张：[目录] 内容目录
+第3张：[内容] 章节1...
+...
+第N张：[结束] 感谢
+
+是否开始生成？或需要调整大纲？
+```
+
+### Step 3：生成 PPTX 文件
+
+用户确认后，调用 pptx_generate：
+
+```
+tool: pptx_generate
+params:
+  outline: <JSON大纲>
+  theme: <theme_id>
+  slide_ratio: "16:9"
+  language: <zh-CN|en-US>
+  include_notes: true
+```
+
+后端使用 python-pptx 生成，设计规范：
+
+#### 幻灯片设计系统
+
+**封面页**
+```
+- 背景：主题渐变色或纯色
+- 标题：48pt，粗体，居中
+- 副标题：24pt，细体，居中
+- 底部：作者、日期（小字）
+- 装饰：几何图形或线条（主题色）
+```
+
+**内容页**
+```
+- 标题区：顶部，18pt，粗体，主题色背景条
+- 内容区：要点列表或段落，14-16pt
+- 每张幻灯片要点 ≤ 6 个
+- 每个要点 ≤ 20 字
+- 页码：右下角，灰色小字
+- Logo 区：左下角（可选）
+```
+
+**数据页**
+```
+- 关键指标卡片（大数字 + 小标签）
+- 图表区域（ECharts 或静态图片形式）
+- 数据来源注释（底部小字）
+```
+
+**双栏页**
+```
+- 左右各 50% 宽度
+- 用分隔线或颜色区分
+- 适合对比、并列展示
+```
+
+#### 字体策略
+
+| 语言 | 标题 | 正文 | 备用 |
+|------|------|------|------|
+| 中文 | 微软雅黑 Bold | 微软雅黑 | 宋体 |
+| 英文 | Calibri Bold | Calibri | Arial |
+| 混合 | 微软雅黑 Bold | 微软雅黑 | 系统默认 |
+
+#### 颜色使用规范
+
+- 单张幻灯片颜色 ≤ 4 种
+- 主色用于标题和重点
+- 强调色用于高亮数据
+- 背景色保持清爽（深色主题反之）
+
+### Step 4：轮询并返回结果
+
+```
+tool: studio_job_status
+params:
+  job_id: <job_id>
+  timeout_seconds: 120  # PPT 生成比 TTS 慢
+  poll_interval_seconds: 3
+```
+
+完成后：
+```
+✅ PPT 生成完成！
+
+📊 共 <N> 张幻灯片
+🎨 主题：<theme_desc>
+📐 比例：16:9
+📥 文件大小：约 <size> MB
+
+[⬇ 下载 PPTX] [📋 查看大纲]
+
+💡 提示：下载后可在 PowerPoint / WPS 中直接编辑。
+```
+
+## 内容质量规范
+
+### 要点提炼原则
+
+- 每个要点表达**一个完整概念**
+- 避免整段文字搬运到幻灯片
+- 数据一定要有单位和对比基准
+- 使用并行结构（都是名词短语，或都是动词短语）
+
+### 幻灯片数量建议
+
+| 场景 | 建议页数 | 时长参考 |
+|------|---------|---------|
+| 简短汇报 | 5-10 张 | 5-15 分钟 |
+| 标准演讲 | 10-20 张 | 20-40 分钟 |
+| 详细报告 | 20-35 张 | 45-60 分钟 |
+| 培训课程 | 30-50 张 | 60-90 分钟 |
+
+## 错误处理
+
+| 问题 | 处理方式 |
+|------|---------|
+| 内容不足（< 100 字） | 询问是否需要 AI 补充内容 |
+| 要求页数过多（>50）| 提示最大限制，建议拆分为多个文件 |
+| 大纲生成失败 | 回退到简单列表模式重试 |
+| pptx 生成失败 | 提供简化版（纯文字，无复杂排版）重试 |
+
+## 示例
+
+**示例 1 — 从大纲生成**
+```
+用户: 帮我把这个产品路线图大纲做成 PPT
+助手: 📋 大纲预览（共 12 张）：
+      封面 → 目录 → 现状分析 × 2 → 规划 × 4 → 里程碑 → 资源 → 风险 → 结束
+      是否开始生成？
+```
+
+**示例 2 — 从文章提炼**
+```
+用户: 把这篇技术博客做成技术分享 PPT，用深色主题
+助手: 将使用 tech 主题，从文章提炼 15 张幻灯片...
+```
+
+**示例 3 — 数据报告**
+```
+用户: 这是我们 Q3 的销售数据，帮我做成汇报 PPT
+助手: 检测到数据表格，将在幻灯片中加入柱状图和关键指标卡片...
+```

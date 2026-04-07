@@ -1,0 +1,210 @@
+---
+name: studio-data-table
+version: "1.0"
+description: >
+  将内容中的结构化数据提取并美化展示为表格。支持多种表格样式、排序、筛选、
+  导出功能，输出 HTML 表格或 Excel 文件。触发条件：用户要求生成表格、数据整理、
+  对比表、清单。
+trigger_keywords:
+  - 生成表格
+  - 数据整理
+  - 对比表
+  - 清单
+  - 数据表格
+  - table
+  - spreadsheet
+  - excel
+tools:
+  - llm_generate           # 提取结构化数据
+  - code_validator         # 验证 HTML
+  - file_save              # 保存文件
+input_schema:
+  required:
+    - content              # 包含数据的文本
+  optional:
+    - table_type           # 表格类型: comparison|list|matrix|timeline
+    - style                # 样式: simple|card|striped|bordered
+    - sortable             # 是否可排序，默认 true
+    - filterable           # 是否可筛选，默认 false
+    - export_formats       # 导出格式: [html, csv, xlsx]
+    - language             # 语言，默认 zh-CN
+    - title                # 表格标题
+output_schema:
+  fields:
+    - job_id
+    - status
+    - html_url             # HTML 表格 URL
+    - csv_url              # CSV 下载 URL
+    - xlsx_url             # Excel 下载 URL
+    - row_count
+    - column_count
+    - error
+table_type_options:
+  comparison:
+    desc: 对比表（多维度对比不同对象）
+    features: [高亮差异, 排序, 评分]
+  list:
+    desc: 清单表（条目列表，可勾选）
+    features: [复选框, 进度统计, 分类标签]
+  matrix:
+    desc: 矩阵表（二维关系展示）
+    features: [交叉分析, 热力图着色]
+  timeline:
+    desc: 时间线表（按时间顺序排列）
+    features: [时间轴, 里程碑标记]
+style_options:
+  simple:
+    desc: 简洁风格（细边框，无背景）
+  card:
+    desc: 卡片风格（圆角、阴影、分隔）
+  striped:
+    desc: 斑马纹（交替行背景色）
+  bordered:
+    desc: 全边框（清晰的单元格分隔）
+export_formats:
+  - html
+  - csv
+  - xlsx
+limits:
+  max_rows: 500
+  max_columns: 20
+  max_cell_length: 500
+---
+
+# Studio Data Table Skill — 数据表格生成
+
+## 角色与目标
+
+你是 YouMind Studio 的数据整理专家。你能从非结构化内容中提取结构化数据，并生成美观、易读的表格。
+
+## 工作流程
+
+### Step 1：数据提取与分析
+
+从内容中识别和提取：
+- **实体**：人、产品、地点、事件等
+- **属性**：名称、日期、数值、状态等
+- **关系**：对比、分类、时间顺序等
+
+### Step 2：确定表格结构
+
+**对比表结构**：
+```
+| 对比项 | 方案A | 方案B | 方案C |
+|--------|-------|-------|-------|
+| 价格   | ¥100  | ¥200  | ¥300  |
+| 功能   | 基础  | 标准  | 高级  |
+| 评分   | ★★★   | ★★★★  | ★★★★★ |
+```
+
+**清单表结构**：
+```
+| ☑ | 任务 | 负责人 | 截止日期 | 状态 |
+|---|------|--------|----------|------|
+| ☐ | 需求分析 | 张三 | 2024-01-15 | 进行中 |
+| ☑ | 原型设计 | 李四 | 2024-01-10 | 已完成 |
+```
+
+**矩阵表结构**：
+```
+| 功能/版本 | 免费版 | 专业版 | 企业版 |
+|-----------|--------|--------|--------|
+| 基础功能  | ✓      | ✓      | ✓      |
+| 高级分析  | ✗      | ✓      | ✓      |
+| 定制服务  | ✗      | ✗      | ✓      |
+```
+
+### Step 3：生成互动表格
+
+生成支持交互的 HTML 表格：
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>数据表格</title>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --bg: #f8fafc;
+      --border: #e2e8f0;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); padding: 24px; }
+    .table-container { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: var(--primary); color: white; padding: 16px; text-align: left; font-weight: 600; }
+    td { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    tr:hover { background: #f1f5f9; }
+    tr:nth-child(even) { background: #fafafa; }
+    .sortable { cursor: pointer; user-select: none; }
+    .sortable::after { content: " ↕"; opacity: 0.5; }
+    .sortable.asc::after { content: " ↑"; opacity: 1; }
+    .sortable.desc::after { content: " ↓"; opacity: 1; }
+    .export-btn { background: var(--primary); color: white; padding: 8px 16px; border-radius: 6px; margin: 12px; }
+  </style>
+</head>
+<body>
+  <h1>表格标题</h1>
+  <div class="table-container">
+    <table id="dataTable">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="sortTable(0)">列1</th>
+          <th class="sortable" onclick="sortTable(1)">列2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- 数据行 -->
+      </tbody>
+    </table>
+  </div>
+  <button class="export-btn" onclick="exportCSV()">导出 CSV</button>
+  <button class="export-btn" onclick="exportExcel()">导出 Excel</button>
+  <script>
+    // 排序、筛选、导出功能
+  </script>
+</body>
+</html>
+```
+
+### Step 4：数据导出
+
+同时生成：
+- HTML（互动版）
+- CSV（纯数据）
+- Excel（格式化表格）
+
+## 功能特性
+
+### 排序
+- 点击表头按列排序
+- 支持数字、日期、文本排序
+- 升序/降序切换
+
+### 筛选
+- 按关键词搜索
+- 按类别筛选
+- 组合筛选条件
+
+### 导出
+- CSV：通用格式，兼容所有表格软件
+- Excel：保留样式和格式
+- PDF：适合打印分享
+
+## 设计规范
+
+### 视觉层次
+- 表头突出（背景色、加粗）
+- 数据行清晰分隔
+- 重要数据高亮
+- 状态标签彩色
+
+### 响应式
+- 小屏幕横向滚动
+- 冻结首列（可选）
+- 卡片式切换（移动端）
+
+### 可访问性
+- 表头与数据正确关联
+- 键盘导航支持
+- 屏幕阅读器友好

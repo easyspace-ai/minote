@@ -1,0 +1,14 @@
+# Air config for notex dev container (workdir = repo root /src).
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./tmp/notex"
+  cmd = "go build -o ./tmp/notex ./cmd/notex"
+  delay = 500
+  exclude_dir = ["tmp", "bin", "web", "three", ".git"]
+  include_ext = ["go", "mod", "sum"]
+  stop_on_error = true
+
+[misc]
+  clean_on_exit = true

@@ -1,0 +1,116 @@
+{
+  "entries": {
+    "PPT-as-code": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "frontend-slides": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "ppt-agent-skills": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "ppt-generation": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-PPT-as-code": {
+      "enabled": true,
+      "installedAt": "2026-04-07T12:56:53Z"
+    },
+    "public-academic-paper-review": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-chart-visualization": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-claude-to-deerflow": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-code-documentation": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-company-research": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-consulting-analysis": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-data-analysis": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-deep-research": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-find-skills": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-frontend-design": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-github-deep-research": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-image-generation": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-multi-language": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-newsletter-generation": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-paper-research": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-podcast-generation": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-ppt-agent-workflow-san": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-skill-creator": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-surprise-me": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-vercel-deploy-claimable": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-video-generation": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "public-web-design-guidelines": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "report-to-ppt": {
+      "enabled": true,
+      "installedAt": "2026-04-07T02:11:13Z"
+    }
+  }
+}

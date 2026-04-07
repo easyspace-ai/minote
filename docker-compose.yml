@@ -1,0 +1,278 @@
+# Youmind unified stack (no WeKnora app/UI — backend/frontends are your own services).
+#
+# Infra: postgres, redis, docreader (gRPC), minio, milvus, markitdown HTTP
+# (image built from ./docker/markitdown-http, no submodule).
+#
+# Docreader image builds from ./docker/weknora. To build weknora-sandbox manually:
+#   docker build -f docker/weknora/Dockerfile.sandbox -t youmind/weknora-sandbox:local ./docker/weknora
+#
+# Usage:
+#   cp .env.example .env   # set DB_*, REDIS_PASSWORD, etc.
+#   docker compose up -d
+#
+# Host apps: POSTGRES_URL must use the same host port as DB_HOST_PORT; MARKITDOWN_URL must
+# match http://127.0.0.1:${MARKITDOWN_PORT} (or your host). Same idea for REDIS_ADDR /
+# DOCREADER_ADDR and their *_PORT variables.
+#
+# Notex API (cmd/notex): use profile "app" — docker compose --profile app up -d
+#   In-container URLs use service DNS (postgres:5432, markitdown:8787, …), overriding .env
+#   localhost ports. Dev hot-reload: profile "dev" + `make dev-notex` (Air).
+#
+# Aliyun ACR / 预构建镜像: 在 .env 里设置 NOTEX_IMAGE=registry/namespace/repo:tag 后，
+#   `docker compose pull notex && docker compose --profile app up -d` 可从仓库拉取（需先 docker login）。
+#   不设则仍为本地构建名 youmind/notex:${NOTEX_TAG:-local}。
+#
+# Connection hints (from another container on youmind-network):
+#   postgres:5432  redis:6379  docreader:50051 (gRPC)
+#   minio:9000     milvus:19530
+#   markitdown:8787 (HTTP — Notex MARKITDOWN_URL)
+
+name: youmind
+
+services:
+  markitdown:
+    build:
+      context: ./docker/markitdown-http
+      dockerfile: Dockerfile
+    image: youmind/markitdown-http:${MARKITDOWN_TAG:-local}
+    container_name: youmind-markitdown
+    ports:
+      - "${MARKITDOWN_PORT:-8787}:8787"
+    environment:
+      - MARKITDOWN_ENABLE_PLUGINS=${MARKITDOWN_ENABLE_PLUGINS:-false}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+    networks:
+      - youmind-network
+    restart: unless-stopped
+
+  postgres:
+    image: paradedb/paradedb:v0.22.2-pg17
+    container_name: youmind-postgres
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-youmind}
+    volumes:
+      - youmind-postgres-data:/var/lib/postgresql/data
+    networks:
+      - youmind-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 1m
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: youmind-redis
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-youmind-redis-local}
+    volumes:
+      - youmind-redis-data:/data
+    networks:
+      - youmind-network
+    restart: unless-stopped
+
+  docreader:
+    image: youmind/weknora-docreader:${WEKNORA_VERSION:-local}
+    build:
+      context: ./docker/weknora
+      dockerfile: Dockerfile.docreader
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+    container_name: youmind-docreader
+    ports:
+      - "${DOCREADER_PORT:-50051}:50051"
+    volumes:
+      - youmind-docreader-tmp:/tmp/docreader
+    environment:
+      DOCREADER_IMAGE_OUTPUT_DIR: /tmp/docreader
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
+      MINERU_ENDPOINT: ${MINERU_ENDPOINT:-}
+      # Object storage (same credentials as minio service; internal DNS for uploads from docreader)
+      MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://127.0.0.1:${MINIO_PORT:-9000}
+      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY_ID:-minioadmin}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_ACCESS_KEY:-minioadmin}
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - youmind-network
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: youmind-minio
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_ACCESS_KEY:-minioadmin}
+    command: server --console-address ":9001" /data
+    volumes:
+      - youmind-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - youmind-network
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.6.11
+    container_name: youmind-milvus
+    security_opt:
+      - seccomp:unconfined
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_HEALTH_PORT:-9091}:9091"
+    volumes:
+      - youmind-milvus-data:/var/lib/milvus
+    networks:
+      - youmind-network
+    restart: unless-stopped
+
+  # Unified Notex + LangGraph (production image). Enable with: docker compose --profile app up -d
+  notex:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: docker/notex/Dockerfile
+    image: ${NOTEX_IMAGE:-youmind/notex:${NOTEX_TAG:-local}}
+    container_name: youmind-notex
+    ports:
+      - "${NOTEX_HOST_PORT:-8787}:8787"
+    env_file:
+      - .env
+    environment:
+      NOTEX_PORT: ":8787"
+      NOTEX_DATA_ROOT: /data/notex
+      # Override host .env localhost URLs — inside compose network use service names.
+      POSTGRES_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-youmind}?sslmode=disable
+      MARKITDOWN_URL: http://markitdown:8787
+      DOCREADER_ADDR: docreader:50051
+      DOCREADER_TRANSPORT: grpc
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-youmind-redis-local}
+      DEERFLOW_CONFIG_PATH: /app/config.yaml
+      MILVUS_ADDRESS: milvus:19530
+      MILVUS_HTTP_HEALTH: http://milvus:9091/healthz
+    volumes:
+      - youmind-notex-data:/data/notex
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      markitdown:
+        condition: service_started
+      redis:
+        condition: service_started
+      docreader:
+        condition: service_started
+    networks:
+      - youmind-network
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./go.mod
+        - action: rebuild
+          path: ./go.sum
+        - action: rebuild
+          path: ./cmd
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./pkg
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+  # Dev: live rebuild on .go changes (Air). Stop `notex` (app profile) first to avoid port clash.
+  notex-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/notex/Dockerfile.dev
+    image: ${NOTEX_DEV_IMAGE:-youmind/notex-dev:${NOTEX_TAG:-local}}
+    container_name: youmind-notex-dev
+    ports:
+      - "${NOTEX_DEV_HOST_PORT:-8797}:8787"
+    working_dir: /src
+    env_file:
+      - .env
+    environment:
+      NOTEX_PORT: ":8787"
+      NOTEX_DATA_ROOT: /data/notex
+      POSTGRES_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-youmind}?sslmode=disable
+      MARKITDOWN_URL: http://markitdown:8787
+      DOCREADER_ADDR: docreader:50051
+      DOCREADER_TRANSPORT: grpc
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-youmind-redis-local}
+      DEERFLOW_CONFIG_PATH: /app/config.yaml
+      MILVUS_ADDRESS: milvus:19530
+      MILVUS_HTTP_HEALTH: http://milvus:9091/healthz
+    volumes:
+      - .:/src
+      - youmind-notex-data:/data/notex
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      markitdown:
+        condition: service_started
+      redis:
+        condition: service_started
+      docreader:
+        condition: service_started
+    networks:
+      - youmind-network
+    restart: unless-stopped
+
+networks:
+  youmind-network:
+    driver: bridge
+
+volumes:
+  youmind-postgres-data:
+  youmind-redis-data:
+  youmind-docreader-tmp:
+  youmind-minio-data:
+  youmind-milvus-data:
+  youmind-notex-data:
