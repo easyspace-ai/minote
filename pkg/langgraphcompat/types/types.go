@@ -186,3 +186,13 @@ type ModelCatalogConfig struct {
 
 // MemoryDocument is an alias for memory.Document.
 type MemoryDocument = memory.Document
+
+// Thread represents a conversation thread.
+type Thread struct {
+	ID        string            `json:"id"`
+	AgentName string            `json:"agent_name"`
+	Title     string            `json:"title"`
+	CreatedAt int64             `json:"created_at"`
+	UpdatedAt int64             `json:"updated_at"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+}
