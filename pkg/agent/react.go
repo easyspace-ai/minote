@@ -875,13 +875,12 @@ func (a *Agent) BuildSystemPrompt(ctx context.Context, sessionID string) string 
 func (a *Agent) buildSystemPrompt(_ context.Context, _ string, deferredState *deferredToolState, failedTools map[string]int, acquiredInfo []string) string {
 	sections := []string{
 		strings.TrimSpace(a.systemPrompt),
-		`You are running in a ReAct-style loop. Follow these rules strictly:
-1. Think step by step before taking any action
-2. Call tools ONLY when you need external information (web search, file read) or to perform system operations (execute command, write file)
-3. For content generation tasks (HTML, code, documents, answers), output the content directly - DO NOT call tools for pure text/generation tasks
-4. If a tool call fails, read the error message carefully and adjust your approach - NEVER repeat the same failed tool call more than once
-5. ALWAYS provide a valid non-empty tool name when calling tools
-6. Stop when you have a complete answer that fully addresses the user's request`,
+		`ReAct Loop Rules:
+1. Call tools ONLY for external info or system operations - NOT for pure content generation
+2. For HTML/code/documents, output directly without tool calls
+3. If a tool fails, adjust approach - NEVER repeat the same failed call
+4. Always provide valid non-empty tool names
+5. Stop when you have a complete answer`,
 	}
 
 	// 添加动态提示：失败的工具

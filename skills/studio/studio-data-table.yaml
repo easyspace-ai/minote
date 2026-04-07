@@ -1,10 +1,20 @@
 ---
 name: studio-data-table
-version: "1.0"
+version: "1.1.0"
 description: >
   将内容中的结构化数据提取并美化展示为表格。支持多种表格样式、排序、筛选、
   导出功能，输出 HTML 表格或 Excel 文件。触发条件：用户要求生成表格、数据整理、
   对比表、清单。
+
+compatibility:
+  min_server_version: "2.0.0"
+  deprecated: []
+
+migration:
+  notes: "v1.0 -> v1.1: 细化工具定义，添加数据导出工具"
+  auto_migrate: true
+  guides:
+    v1.0: "所有 v1.0 配置完全兼容，无需修改"
 trigger_keywords:
   - 生成表格
   - 数据整理
@@ -15,9 +25,53 @@ trigger_keywords:
   - spreadsheet
   - excel
 tools:
-  - llm_generate           # 提取结构化数据
-  - code_validator         # 验证 HTML
-  - file_save              # 保存文件
+  - name: llm_generate
+    description: 提取结构化数据并设计表格结构
+    params:
+      extraction_targets:
+        - entities
+        - attributes
+        - relationships
+      table_types:
+        - comparison
+        - list
+        - matrix
+        - timeline
+
+  - name: table_builder
+    description: 生成交互式 HTML 表格
+    params:
+      features:
+        - sortable_columns               # 可排序列
+        - filterable_rows                # 可筛选行（可选）
+        - responsive_design              # 响应式设计
+        - sticky_header                  # 表头固定
+      export_formats:
+        - html
+        - csv
+        - xlsx
+
+  - name: data_exporter
+    description: 导出数据到多种格式
+    condition: "{{ 'csv' in export_formats or 'xlsx' in export_formats }}"
+    params:
+      csv_encoding: "UTF-8"
+      excel_format: "xlsx"
+      include_headers: true
+
+  - name: code_validator
+    description: 验证表格 HTML
+    params:
+      checks:
+        - html_syntax
+        - css_syntax
+
+  - name: file_save
+    description: 保存表格文件
+    params:
+      directory: "/mnt/user-data/outputs"
+      multiple_formats: true
+      filename_pattern: "studio-table-{{timestamp}}.{{ext}}"
 input_schema:
   required:
     - content              # 包含数据的文本
@@ -173,6 +227,26 @@ limits:
 - HTML（互动版）
 - CSV（纯数据）
 - Excel（格式化表格）
+
+### Step 5：质量评估（QA）
+
+在返回结果前，执行自检：
+
+**QA Checklist**:
+- [ ] 数据提取完整，无遗漏行/列
+- [ ] 数据类型识别正确（数字、文本、日期）
+- [ ] 表格样式符合用户要求
+- [ ] 排序/筛选功能正常（如启用）
+- [ ] 导出文件格式正确、可打开
+- [ ] HTML 表格在移动端可横向滚动
+
+**数据质量指标**:
+| 项目 | 标准 | 权重 |
+|------|------|------|
+| 完整性 | 无数据丢失 | 40% |
+| 准确性 | 数据类型正确 | 30% |
+| 可用性 | 导出文件可正常打开 | 20% |
+| 美观度 | 样式符合要求 | 10% |
 
 ## 功能特性
 

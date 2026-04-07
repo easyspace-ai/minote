@@ -12,6 +12,7 @@ import (
 
 	"github.com/easyspace-ai/minote/internal/notex"
 	"github.com/easyspace-ai/minote/pkg/langgraphcompat"
+	"github.com/easyspace-ai/minote/pkg/langgraphcompat/handlers"
 )
 
 func resolveWebRoot() string {
@@ -127,9 +128,56 @@ func New(cfg Config) (*App, error) {
 		return notexSrv.StudioInjectionPrefixForLangGraph(ctx, userID, conversationID, docIDs)
 	})
 
+	// ========== 新的 LangGraph 数据库存储集成 ==========
+	var handlerAdapter *handlers.Adapter
+	if databaseURL != "" && notexStore != nil {
+		// 创建 LangGraph 存储（自动迁移表结构）
+		lgStore, err := notex.NewLangGraphStores(notexStore)
+		if err != nil {
+			logger.Printf("warning: failed to create langgraph store: %v", err)
+		} else {
+			// 创建存储实例
+			stores := notex.CreateHandlerStores(lgStore)
+
+			// 创建 handlers 适配器
+			handlerAdapter = handlers.NewAdapterWithStores(defaultModel, handlers.HandlerStores{
+				ThreadStore: stores.ThreadStore,
+				AgentStore:  stores.AgentStore,
+				MemoryStore: stores.MemoryStore,
+				// RunStore 暂时使用 legacy 实现，需要与执行引擎深度集成
+				RunStore: nil,
+			})
+
+			logger.Printf("langgraph db stores initialized (threads, agents, memory)")
+		}
+	}
+
+	// 如果没有创建 adapter（无数据库或初始化失败），使用默认内存存储
+	if handlerAdapter == nil {
+		handlerAdapter = handlers.NewAdapter(defaultModel)
+		logger.Printf("langgraph memory stores initialized")
+	}
+	// ==================================================
+
 	combinedMux := http.NewServeMux()
 	combinedMux.Handle("/api/v1/", notexSrv.Handler())
 	combinedMux.Handle("/health", notexSrv.Handler())
+
+	// ========== 注册新的 LangGraph Handlers（使用数据库存储）==========
+	// 使用渐进式迁移：优先使用新的 handlers，未实现的回退到 legacy
+	useNewHandlers := map[string]bool{
+		"models":  false, // Model handler 复用 legacy 的配置加载逻辑
+		"threads": true,  // 使用新的数据库存储
+		"memory":  true,  // 使用新的数据库存储
+		"agents":  true,  // 使用新的数据库存储
+		"runs":    false, // Run handler 需要与执行引擎集成，暂用 legacy
+	}
+	handlerAdapter.RegisterMigrationRoutes(combinedMux, useNewHandlers)
+	logger.Printf("langgraph handlers registered (threads=%v, agents=%v, memory=%v)",
+		useNewHandlers["threads"], useNewHandlers["agents"], useNewHandlers["memory"])
+	// ==============================================================
+
+	// 其余路由交给 legacy server
 	combinedMux.Handle("/", aiSrv.Handler())
 
 	httpServer := &http.Server{

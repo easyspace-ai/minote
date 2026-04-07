@@ -1,10 +1,21 @@
 ---
 name: studio-html
-version: "1.0"
+version: "1.1.0"
 description: >
   将内容生成为精美的交互式 HTML 页面，支持文章展示、数据可视化、互动演示、
   落地页等多种场景。输出完整的自包含 HTML 文件（内联 CSS + JS）。
   触发条件：用户要求生成网页、HTML、可视化报告、交互展示。
+
+compatibility:
+  min_server_version: "2.0.0"
+  deprecated: []
+
+migration:
+  notes: "v1.0 -> v1.1: 细化工具定义，添加参数约束"
+  auto_migrate: true
+  guides:
+    v1.0: "所有 v1.0 配置完全兼容，无需修改"
+
 trigger_keywords:
   - 生成网页
   - 生成HTML
@@ -19,10 +30,48 @@ trigger_keywords:
   - html
   - visualization
 tools:
-  - llm_generate           # 调用 LLM 生成 HTML 代码
-  - code_validator         # 验证 HTML/CSS/JS 语法
-  - file_save              # 保存 HTML 文件
-  - file_url_resolve       # 获取可访问 URL
+  - name: llm_generate
+    description: 生成完整 HTML 代码
+    params:
+      output_format: "html_complete"      # 要求完整 HTML 文档（含 head/body）
+      css_framework: "none"               # 不使用 Bootstrap/Tailwind 等外部框架
+      inline_resources: true              # CSS/JS 必须内联，减少外部依赖
+      responsive_design: true             # 必须包含移动端适配
+      accessibility: "basic"              # 基础无障碍支持（alt、aria-label）
+    required_outputs:
+      - html_content                      # 完整 HTML 字符串
+      - estimated_size_kb                 # 预估文件大小
+
+  - name: code_validator
+    description: 验证生成的 HTML/CSS/JS
+    params:
+      checks:
+        - html_syntax                     # HTML5 语法检查
+        - css_syntax                      # CSS 错误检查
+        - js_syntax                       # JavaScript 错误检查
+        - xss_prevention                  # XSS 防护检查（如内联事件）
+        - accessibility                   # 基础无障碍检查
+    on_failure: "auto_fix"                # 失败时自动修复并重试
+
+  - name: html_compressor
+    description: 压缩 HTML 文件（条件触发）
+    condition: "{{ estimated_size_kb > 500 }}"
+    params:
+      minify_css: true
+      minify_js: true
+      remove_comments: true
+
+  - name: file_save
+    description: 保存 HTML 文件到存储
+    params:
+      directory: "/mnt/user-data/outputs"
+      content_type: "text/html"
+      filename_pattern: "studio-html-{{timestamp}}.html"
+
+  - name: file_url_resolve
+    description: 生成可访问的文件 URL
+    params:
+      expiry_hours: 168                    # URL 有效期 7 天
 input_schema:
   required:
     - content              # 内容来源：文本、Markdown、数据
@@ -74,6 +123,13 @@ quality_standards:
 你是 YouMind Studio 的 HTML 生成专家。你能将任意内容（文章、数据、大纲、想法）转化为美观、交互丰富的 HTML 页面，无需用户了解任何前端技术。
 
 ## 工作流程
+
+### Step 0：需求确认（澄清优先）
+
+如果用户请求缺少以下关键信息，调用 `ask_clarification`：
+- **内容为空**：询问用户提供具体要展示的内容
+- **目标受众不明确**：询问页面面向谁（技术人员/普通用户/高管）
+- **使用场景不明确**：询问是用于演示/分享/打印
 
 ### Step 1：分析内容和需求
 
@@ -189,7 +245,33 @@ params:
 
 若发现问题，自动修复后重新验证。
 
-### Step 5：保存并返回
+### Step 5：质量评估（QA）
+
+在返回结果前，执行自检：
+
+**QA Checklist**:
+- [ ] 文件大小 ≤ 500KB（超出则压缩）
+- [ ] 所有 CSS 已内联，无外部样式表依赖
+- [ ] 所有 JS 已内联，无外部脚本依赖（CDN 除外）
+- [ ] 页面包含 `<title>` 标签
+- [ ] 响应式设计验证：在移动端和桌面端均可正常显示
+- [ ] 无障碍检查：所有图片有 alt 属性，交互元素有 aria-label
+- [ ] 性能检查：无阻塞渲染的大型资源
+
+**评分标准**:
+| 项目 | 权重 | 标准 |
+|------|------|------|
+| 视觉效果 | 30% | 美观、符合主题、专业 |
+| 功能完整 | 30% | 所有声明的功能正常工作 |
+| 代码质量 | 20% | 无语法错误、结构清晰 |
+| 性能优化 | 10% | 加载快、资源优化 |
+| 无障碍 | 10% | 基础无障碍支持 |
+
+总分 < 80%：返回错误，说明问题
+总分 80-90%：返回警告，但允许使用
+总分 > 90%：高质量输出
+
+### Step 6：保存并返回
 
 ```
 tool: file_save

@@ -1,38 +1,39 @@
-# Youmind unified stack (no WeKnora app/UI — backend/frontends are your own services).
+# =============================================================================
+# YouMind 基础服务 Docker Compose 配置
 #
-# Infra: postgres, redis, docreader (gRPC), minio, milvus, markitdown HTTP
-# (image built from ./docker/markitdown-http, no submodule).
+# 架构说明:
+#   - 此文件定义基础服务 (Postgres, Redis, MinIO, Milvus, markitdown, docreader)
+#   - 本地开发: docker compose up -d (自动加载 override.yml 进行本地构建)
+#   - 生产部署: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# Docreader image builds from ./docker/weknora. To build weknora-sandbox manually:
-#   docker build -f docker/weknora/Dockerfile.sandbox -t youmind/weknora-sandbox:local ./docker/weknora
+# 使用方法:
+#   1. cp .env.example .env (本地) 或 cp .env.server.example .env (服务器)
+#   2. 编辑 .env，配置密码和镜像地址
+#   3. make docker (本地) 或 make server-deploy (服务器)
 #
-# Usage:
-#   cp .env.example .env   # set DB_*, REDIS_PASSWORD, etc.
-#   docker compose up -d
+# Mac 构建 -> 阿里云 ECS:
+#   1. make acr-push-both ACR_VERSION=v1.0.0
+#   2. 在服务器上配置 .env 中的镜像地址
+#   3. make server-deploy
 #
-# Host apps: POSTGRES_URL must use the same host port as DB_HOST_PORT; MARKITDOWN_URL must
-# match http://127.0.0.1:${MARKITDOWN_PORT} (or your host). Same idea for REDIS_ADDR /
-# DOCREADER_ADDR and their *_PORT variables.
+# 端口映射 (宿主机 -> 容器):
+#   markitdown:  ${MARKITDOWN_PORT:-8787}:8787  (HTTP API)
+#   postgres:    ${DB_HOST_PORT:-5432}:5432      (PostgreSQL)
+#   redis:       ${REDIS_HOST_PORT:-6379}:6379   (Redis)
+#   docreader:   ${DOCREADER_PORT:-50051}:50051 (gRPC)
+#   minio:       ${MINIO_PORT:-9000}:9000 + ${MINIO_CONSOLE_PORT:-9001}:9001
+#   milvus:      ${MILVUS_PORT:-19530}:19530 + ${MILVUS_HEALTH_PORT:-9091}:9091
 #
-# Notex / 网关等业务进程不在本 compose 内；在宿主机 go run / 单独容器或 K8s 运行，并连下方端口。
-#
-# Aliyun ACR（scripts/acr-push.sh 仅推送 markitdown / docreader；Notex 不参与该脚本）:
-#   MARKITDOWN_IMAGE=.../metanote/markitdown:tag
-#   DOCREADER_IMAGE=.../metanote/docreader:tag
-#   需先 docker login；`make docker` 会 pull。不设则仍为 youmind/* 本地 tag + compose build。
-#
-# Connection hints (from another container on youmind-network):
-#   postgres:5432  redis:6379  docreader:50051 (gRPC)
-#   minio:9000     milvus:19530
-#   markitdown:8787 (HTTP — Notex MARKITDOWN_URL)
+# 云服务器架构: 固定 linux/amd64 (x86_64)，勿改 DOCKER_PLATFORM
+# =============================================================================
 
 name: youmind
 
 services:
   markitdown:
-    build:
-      context: ./docker/markitdown-http
-      dockerfile: Dockerfile
+    # 镜像: 本地开发使用 local tag，生产使用 ACR 镜像 (通过 docker-compose.prod.yml 覆盖)
+    # 构建: 定义在 docker-compose.override.yml (本地开发) 或 acr-push.sh (Mac -> ACR)
+    platform: linux/amd64
     image: ${MARKITDOWN_IMAGE:-youmind/markitdown-http:${MARKITDOWN_TAG:-local}}
     container_name: youmind-markitdown
     ports:
@@ -84,12 +85,10 @@ services:
     restart: unless-stopped
 
   docreader:
+    # 镜像: 本地开发使用 local tag，生产使用 ACR 镜像 (通过 docker-compose.prod.yml 覆盖)
+    # 构建: 定义在 docker-compose.override.yml (本地开发) 或 acr-push.sh (Mac -> ACR)
+    platform: linux/amd64
     image: ${DOCREADER_IMAGE:-youmind/weknora-docreader:${WEKNORA_VERSION:-local}}
-    build:
-      context: ./docker/weknora
-      dockerfile: Dockerfile.docreader
-      args:
-        APT_MIRROR: ${APT_MIRROR:-}
     container_name: youmind-docreader
     ports:
       - "${DOCREADER_PORT:-50051}:50051"

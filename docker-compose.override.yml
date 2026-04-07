@@ -1,0 +1,35 @@
+# Docker Compose 本地开发覆盖配置 (Local Development Override)
+#
+# 用途:
+#   - 本地开发时自动加载 (docker compose up 默认读取)
+#   - 使用本地构建的镜像 (youmind/markitdown-http:local 等)
+#   - 挂载本地源码卷 (方便调试)
+#
+# 服务器部署:
+#   - 服务器使用: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   - 或设置 COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#
+# 构建并推送到 ACR (Mac -> 阿里云):
+#   make acr-push-both ACR_VERSION=v1.0.0
+
+name: youmind
+
+services:
+  markitdown:
+    # 本地开发: 从 Dockerfile 构建
+    build:
+      context: ./docker/markitdown-http
+      dockerfile: Dockerfile
+    image: youmind/markitdown-http:local
+    # 本地开发时挂载源码（可选，需要时取消注释）
+    # volumes:
+    #   - ./docker/markitdown-http/http_server.py:/app/http_server.py:ro
+
+  docreader:
+    # 本地开发: 从 Dockerfile 构建
+    build:
+      context: ./docker/weknora
+      dockerfile: Dockerfile.docreader
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+    image: youmind/weknora-docreader:local

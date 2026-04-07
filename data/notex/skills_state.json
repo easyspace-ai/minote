@@ -4,6 +4,10 @@
       "enabled": true,
       "installedAt": "2026-04-07T02:11:13Z"
     },
+    "PPT-as-code-agents-openai": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
+    },
     "frontend-slides": {
       "enabled": true,
       "installedAt": "2026-04-07T02:11:13Z"
@@ -19,6 +23,10 @@
     "public-PPT-as-code": {
       "enabled": true,
       "installedAt": "2026-04-07T12:56:53Z"
+    },
+    "public-PPT-as-code-agents-openai": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
     },
     "public-academic-paper-review": {
       "enabled": true,
@@ -111,6 +119,30 @@
     "report-to-ppt": {
       "enabled": true,
       "installedAt": "2026-04-07T02:11:13Z"
+    },
+    "studio-studio-audio": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
+    },
+    "studio-studio-data-table": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
+    },
+    "studio-studio-html": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
+    },
+    "studio-studio-infographic": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
+    },
+    "studio-studio-ppt": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
+    },
+    "studio-studio-quiz": {
+      "enabled": true,
+      "installedAt": "2026-04-07T19:05:52Z"
     }
   }
 }

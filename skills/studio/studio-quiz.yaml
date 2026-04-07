@@ -1,9 +1,20 @@
 ---
 name: studio-quiz
-version: "1.0"
+version: "1.1.0"
 description: >
   基于内容生成互动测验（Quiz）。支持多种题型（选择、判断、填空、简答），
   输出可分享的互动网页或打印版 PDF。触发条件：用户要求生成测验、考试、练习题、问答。
+
+compatibility:
+  min_server_version: "2.0.0"
+  deprecated: []
+
+migration:
+  notes: "v1.0 -> v1.1: 细化工具定义，添加内容分析步骤"
+  auto_migrate: true
+  guides:
+    v1.0: "所有 v1.0 配置完全兼容，无需修改"
+
 trigger_keywords:
   - 生成测验
   - 生成考试
@@ -14,9 +25,51 @@ trigger_keywords:
   - test
   - assessment
 tools:
-  - llm_generate           # 生成题目内容
-  - code_validator         # 验证 HTML/JS
-  - file_save              # 保存文件
+  - name: llm_generate
+    description: 生成测验题目内容
+    params:
+      question_types:
+        - choice
+        - true_false
+        - fill_blank
+        - short_answer
+      difficulty_distribution:
+        easy: 0.4
+        medium: 0.4
+        hard: 0.2
+      max_questions: 50
+      require_explanations: true          # 每题必须包含答案解析
+
+  - name: content_analyzer
+    description: 分析原始内容，提取知识点
+    params:
+      min_key_concepts: 3                 # 最少提取核心概念数
+      max_key_concepts: 10
+
+  - name: quiz_builder
+    description: 构建互动测验 HTML
+    params:
+      features:
+        - timer                          # 计时器
+        - instant_feedback               # 即时反馈
+        - score_tracking                 # 分数统计
+        - answer_explanation             # 答案解析展示
+        - progress_bar                   # 进度条
+
+  - name: code_validator
+    description: 验证测验 HTML/JS
+    params:
+      checks:
+        - html_syntax
+        - js_syntax
+        - no_external_deps               # 确保无外部依赖
+
+  - name: file_save
+    description: 保存测验文件
+    params:
+      directory: "/mnt/user-data/outputs"
+      content_type: "text/html"
+      filename_pattern: "studio-quiz-{{timestamp}}.html"
 input_schema:
   required:
     - content              # 原文内容或知识点
@@ -207,6 +260,28 @@ D. 图形界面
 - 即时反馈（正确/错误）
 - 答案解析展示
 - 成绩统计与分享
+
+### Step 5：质量评估（QA）
+
+在返回结果前，执行自检：
+
+**QA Checklist**:
+- [ ] 题目数量 = 用户要求的数量（或根据内容合理推断）
+- [ ] 每种题型至少 1 题（如果用户要求多种题型）
+- [ ] 所有题目都有正确答案
+- [ ] 所有题目都有答案解析
+- [ ] 难度分布符合要求
+- [ ] 无重复题目或相似度过高的题目
+- [ ] 互动功能正常（计时器、提交按钮、成绩显示）
+
+**评分标准**:
+| 项目 | 权重 | 标准 |
+|------|------|------|
+| 题目质量 | 30% | 清晰、无歧义、有区分度 |
+| 答案准确 | 25% | 正确答案无误、解析清晰 |
+| 互动功能 | 20% | 按钮、计时器、评分正常 |
+| 难度平衡 | 15% | 符合要求的难度分布 |
+| 题型覆盖 | 10% | 要求的题型都有覆盖 |
 
 ## 输出示例
 

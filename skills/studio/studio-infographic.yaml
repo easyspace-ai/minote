@@ -1,9 +1,20 @@
 ---
 name: studio-infographic
-version: "1.0"
+version: "1.1.0"
 description: >
   将内容转化为精美的信息图（Infographic）。支持数据可视化、流程图、对比图、时间线等多种布局，
   输出高清 PNG 或 SVG 格式。触发条件：用户要求生成信息图、数据可视化、流程图、对比图。
+
+compatibility:
+  min_server_version: "2.0.0"
+  deprecated: []
+
+migration:
+  notes: "v1.0 -> v1.1: 细化工具定义，添加 SVG 优化参数"
+  auto_migrate: true
+  guides:
+    v1.0: "所有 v1.0 配置完全兼容，无需修改"
+
 trigger_keywords:
   - 生成信息图
   - 信息图
@@ -15,10 +26,40 @@ trigger_keywords:
   - visualization
   - flowchart
 tools:
-  - llm_generate           # 生成信息图设计规范
-  - image_generate         # 生成图片（如需要）
-  - svg_generate           # 生成 SVG 代码
-  - file_save              # 保存文件
+  - name: llm_generate
+    description: 生成信息图设计规范
+    params:
+      output_sections:
+        - layout_analysis      # 布局类型分析
+        - visual_hierarchy     # 视觉层次规划
+        - color_scheme         # 配色方案
+        - typography           # 字体策略
+
+  - name: svg_generate
+    description: 生成内联 SVG 代码
+    params:
+      viewBox: "0 0 1200 1600"
+      inline_styles: true                 # 内联样式，无外部 CSS
+      font_fallbacks: ["PingFang SC", "Microsoft YaHei", "Arial"]
+      optimize_for_size: true
+
+  - name: image_generate
+    description: 生成 PNG 图片（可选）
+    condition: "{{ format == 'png' }}"
+    params:
+      width: 1200
+      height: 1600
+      dpi: 144
+      bg_transparent: false
+
+  - name: file_save
+    description: 保存信息图文件
+    params:
+      directory: "/mnt/user-data/outputs"
+      formats:
+        - svg
+        - png
+      filename_pattern: "studio-infographic-{{timestamp}}.{{ext}}"
 input_schema:
   required:
     - content              # 要可视化的内容/数据
@@ -166,6 +207,26 @@ limits:
 - 优化 SVG 文件大小
 - 如需 PNG，使用服务端渲染
 - 添加适当的字体回退
+
+### Step 5：质量评估（QA）
+
+在返回结果前，执行自检：
+
+**QA Checklist**:
+- [ ] 信息图内容完整，无遗漏关键信息
+- [ ] 视觉布局清晰，层次分明
+- [ ] 配色符合主题规范
+- [ ] 文件大小合理（SVG < 500KB, PNG < 5MB）
+- [ ] 文本可读性良好（对比度充足）
+- [ ] 无拼写或语法错误
+
+**评分标准**:
+| 项目 | 权重 | 标准 |
+|------|------|------|
+| 信息准确性 | 35% | 信息无错误、无遗漏 |
+| 视觉设计 | 30% | 美观、布局合理、色彩协调 |
+| 可读性 | 20% | 字体清晰、层次明确 |
+| 技术质量 | 15% | 文件格式正确、大小合理 |
 
 ## 设计规范
 

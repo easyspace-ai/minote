@@ -1,10 +1,21 @@
 ---
 name: studio-ppt
-version: "1.0"
+version: "1.1.0"
 description: >
   将内容生成为专业的 PowerPoint 演示文稿（.pptx）。支持多种主题风格和幻灯片类型，
   输出可直接在 PowerPoint / WPS / Keynote（兼容模式）中编辑的 .pptx 文件。
   触发条件：用户要求生成 PPT、幻灯片、演示文稿、Presentation。
+
+compatibility:
+  min_server_version: "2.0.0"
+  deprecated: []
+
+migration:
+  notes: "v1.0 -> v1.1: 细化工具定义，添加内容优化步骤"
+  auto_migrate: true
+  guides:
+    v1.0: "所有 v1.0 配置完全兼容，无需修改"
+
 trigger_keywords:
   - 生成PPT
   - 生成幻灯片
@@ -16,10 +27,46 @@ trigger_keywords:
   - PowerPoint
   - deck
 tools:
-  - llm_generate           # 生成幻灯片内容结构（JSON）
-  - pptx_generate          # 调用后端 python-pptx 生成 .pptx 文件
-  - studio_job_status      # 轮询任务状态
-  - file_url_resolve       # 获取下载 URL
+  - name: llm_generate
+    description: 生成幻灯片内容大纲（JSON 格式）
+    params:
+      output_format: "json_schema"
+      schema:
+        title: "string"
+        slides:
+          - type: "cover|toc|section|content|two_col|image_text|data|quote|summary|end"
+            title: "string"
+            bullets: ["string"]
+            notes: "string"
+      max_slides: 50
+      enforce_limits: true
+
+  - name: content_optimizer
+    description: 优化幻灯片内容（精简文字、平衡布局）
+    params:
+      max_bullets_per_slide: 6
+      max_chars_per_bullet: 20
+      ensure_parallel_structure: true     # 确保要点结构一致
+
+  - name: pptx_generate
+    description: 调用后端生成 .pptx 文件
+    params:
+      engine: "python-pptx"
+      supported_themes: [professional, minimal, vibrant, tech, education]
+      default_ratio: "16:9"
+      include_speaker_notes: true
+
+  - name: studio_job_status
+    description: 轮询 PPT 生成任务状态
+    params:
+      timeout_seconds: 180                # PPT 生成较慢，设置更长超时
+      poll_interval_seconds: 3
+
+  - name: file_url_resolve
+    description: 生成可下载的 PPTX 文件 URL
+    params:
+      expiry_hours: 168
+      content_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 input_schema:
   required:
     - content              # 文本、Markdown、大纲、或数据
@@ -273,6 +320,31 @@ params:
 | 要求页数过多（>50）| 提示最大限制，建议拆分为多个文件 |
 | 大纲生成失败 | 回退到简单列表模式重试 |
 | pptx 生成失败 | 提供简化版（纯文字，无复杂排版）重试 |
+
+### Step 5：质量评估（QA）
+
+在返回结果前，执行自检：
+
+**QA Checklist**:
+- [ ] 幻灯片数量在合理范围（5-50 张）
+- [ ] 每张幻灯片要点 ≤ 6 个
+- [ ] 字体大小合适（标题 ≥ 24pt，正文 ≥ 14pt）
+- [ ] 所有图片/图表正确嵌入
+- [ ] 主题颜色一致应用
+- [ ] 演讲备注已包含（如 requested）
+- [ ] 文件大小 ≤ 20MB
+
+**评分标准**:
+| 项目 | 权重 | 标准 |
+|------|------|------|
+| 内容结构 | 30% | 逻辑清晰、层次分明 |
+| 视觉设计 | 25% | 美观、主题统一 |
+| 信息密度 | 20% | 适度、不拥挤 |
+| 技术质量 | 15% | 无格式错误、可正常打开 |
+| 备注完整 | 10% | 演讲备注实用 |
+
+总分 < 75%：警告，但允许下载
+总分 < 60%：失败，返回错误
 
 ## 示例
 
