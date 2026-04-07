@@ -1,6 +1,8 @@
 # Notex 后端容器化与本地开发说明
 
-本文说明如何将 **`cmd/notex`**（统一 Notex API + LangGraph）通过 Docker Compose 运行，以及在开发阶段如何快速重建或热重载。
+**当前仓库**：根目录 `docker-compose.yml` **只起基础设施**（Postgres、Redis、MarkItDown、docreader、MinIO、Milvus）；**不再包含** `notex` / `notex-dev`。Notex 用 **`make notex-build`** 或 `go run ./cmd/notex`，部署用 **`docker run`** / K8s 等。
+
+下文若仍提到 `make up-app`、`profile app` 等，为**历史说明**，请以当前 `Makefile`、`docker-compose.yml` 为准。
 
 ---
 
@@ -11,8 +13,8 @@
 | `docker/notex/Dockerfile` | 生产向多阶段镜像：编译 `cmd/notex`，默认内置 `config.example.yaml` 为 `/app/config.yaml` |
 | `docker/notex/Dockerfile.dev` | 开发镜像：安装 **Air**，配合挂载源码做热重载 |
 | `docker/notex/air.toml` | Air 配置：监听 `cmd` / `internal` / `pkg` 下 Go 变更并执行 `go build` |
-| 根目录 `docker-compose.yml` | 新增服务 **`notex`**（profile `app`）、**`notex-dev`**（profile `dev`） |
-| 根目录 `Makefile` | 常用命令封装（`up-app`、`dev-notex`、`notex-rebuild`、`watch-notex` 等） |
+| 根目录 `docker-compose.yml` | **仅基础设施**；无 Notex 服务 |
+| 根目录 `Makefile` | `make docker` / `make infra`、`make notex-build`、`make acr-push`（仅 infra 镜像）等 |
 
 ---
 

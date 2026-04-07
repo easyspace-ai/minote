@@ -370,11 +370,11 @@ pkg/tools/builtin/<tool>.go
 ## 部署
 
 ```bash
-# Docker Compose（推荐）
-docker compose --profile app up -d
-docker compose ps
+# Docker Compose：仅基础设施（Postgres、Redis、MarkItDown、docreader、MinIO、Milvus）
+make docker
+# 或: docker compose up -d && docker compose ps
 
-# 二进制
+# Notex：本机二进制或单独容器（镜像 make notex-build / ACR）
 go build -o notex ./cmd/notex
 ./notex
 ```

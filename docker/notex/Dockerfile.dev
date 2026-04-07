@@ -1,4 +1,4 @@
-# Dev image: Air live-reload for cmd/notex. Mount repo at /src (see docker-compose notex-dev).
+# Dev image: Air live-reload for cmd/notex. Mount repo at /src (docker run -v "$PWD":/src …).
 FROM golang:1.25-bookworm
 WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl \

@@ -14,13 +14,12 @@
 # match http://127.0.0.1:${MARKITDOWN_PORT} (or your host). Same idea for REDIS_ADDR /
 # DOCREADER_ADDR and their *_PORT variables.
 #
-# Notex API (cmd/notex): use profile "app" — docker compose --profile app up -d
-#   In-container URLs use service DNS (postgres:5432, markitdown:8787, …), overriding .env
-#   localhost ports. Dev hot-reload: profile "dev" + `make dev-notex` (Air).
+# Notex / 网关等业务进程不在本 compose 内；在宿主机 go run / 单独容器或 K8s 运行，并连下方端口。
 #
-# Aliyun ACR / 预构建镜像: 在 .env 里设置 NOTEX_IMAGE=registry/namespace/repo:tag 后，
-#   `docker compose pull notex && docker compose --profile app up -d` 可从仓库拉取（需先 docker login）。
-#   不设则仍为本地构建名 youmind/notex:${NOTEX_TAG:-local}。
+# Aliyun ACR（scripts/acr-push.sh 仅推送 markitdown / docreader；Notex 不参与该脚本）:
+#   MARKITDOWN_IMAGE=.../metanote/markitdown:tag
+#   DOCREADER_IMAGE=.../metanote/docreader:tag
+#   需先 docker login；`make docker` 会 pull。不设则仍为 youmind/* 本地 tag + compose build。
 #
 # Connection hints (from another container on youmind-network):
 #   postgres:5432  redis:6379  docreader:50051 (gRPC)
@@ -34,7 +33,7 @@ services:
     build:
       context: ./docker/markitdown-http
       dockerfile: Dockerfile
-    image: youmind/markitdown-http:${MARKITDOWN_TAG:-local}
+    image: ${MARKITDOWN_IMAGE:-youmind/markitdown-http:${MARKITDOWN_TAG:-local}}
     container_name: youmind-markitdown
     ports:
       - "${MARKITDOWN_PORT:-8787}:8787"
@@ -85,7 +84,7 @@ services:
     restart: unless-stopped
 
   docreader:
-    image: youmind/weknora-docreader:${WEKNORA_VERSION:-local}
+    image: ${DOCREADER_IMAGE:-youmind/weknora-docreader:${WEKNORA_VERSION:-local}}
     build:
       context: ./docker/weknora
       dockerfile: Dockerfile.docreader
@@ -164,107 +163,6 @@ services:
       - youmind-network
     restart: unless-stopped
 
-  # Unified Notex + LangGraph (production image). Enable with: docker compose --profile app up -d
-  notex:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: docker/notex/Dockerfile
-    image: ${NOTEX_IMAGE:-youmind/notex:${NOTEX_TAG:-local}}
-    container_name: youmind-notex
-    ports:
-      - "${NOTEX_HOST_PORT:-8787}:8787"
-    env_file:
-      - .env
-    environment:
-      NOTEX_PORT: ":8787"
-      NOTEX_DATA_ROOT: /data/notex
-      # Override host .env localhost URLs — inside compose network use service names.
-      POSTGRES_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-youmind}?sslmode=disable
-      MARKITDOWN_URL: http://markitdown:8787
-      DOCREADER_ADDR: docreader:50051
-      DOCREADER_TRANSPORT: grpc
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-youmind-redis-local}
-      DEERFLOW_CONFIG_PATH: /app/config.yaml
-      MILVUS_ADDRESS: milvus:19530
-      MILVUS_HTTP_HEALTH: http://milvus:9091/healthz
-    volumes:
-      - youmind-notex-data:/data/notex
-      - ./config.yaml:/app/config.yaml:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      markitdown:
-        condition: service_started
-      redis:
-        condition: service_started
-      docreader:
-        condition: service_started
-    networks:
-      - youmind-network
-    restart: unless-stopped
-    develop:
-      watch:
-        - action: rebuild
-          path: ./go.mod
-        - action: rebuild
-          path: ./go.sum
-        - action: rebuild
-          path: ./cmd
-        - action: rebuild
-          path: ./internal
-        - action: rebuild
-          path: ./pkg
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 45s
-
-  # Dev: live rebuild on .go changes (Air). Stop `notex` (app profile) first to avoid port clash.
-  notex-dev:
-    profiles: ["dev"]
-    build:
-      context: .
-      dockerfile: docker/notex/Dockerfile.dev
-    image: ${NOTEX_DEV_IMAGE:-youmind/notex-dev:${NOTEX_TAG:-local}}
-    container_name: youmind-notex-dev
-    ports:
-      - "${NOTEX_DEV_HOST_PORT:-8797}:8787"
-    working_dir: /src
-    env_file:
-      - .env
-    environment:
-      NOTEX_PORT: ":8787"
-      NOTEX_DATA_ROOT: /data/notex
-      POSTGRES_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-youmind}?sslmode=disable
-      MARKITDOWN_URL: http://markitdown:8787
-      DOCREADER_ADDR: docreader:50051
-      DOCREADER_TRANSPORT: grpc
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-youmind-redis-local}
-      DEERFLOW_CONFIG_PATH: /app/config.yaml
-      MILVUS_ADDRESS: milvus:19530
-      MILVUS_HTTP_HEALTH: http://milvus:9091/healthz
-    volumes:
-      - .:/src
-      - youmind-notex-data:/data/notex
-      - ./config.yaml:/app/config.yaml:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      markitdown:
-        condition: service_started
-      redis:
-        condition: service_started
-      docreader:
-        condition: service_started
-    networks:
-      - youmind-network
-    restart: unless-stopped
-
 networks:
   youmind-network:
     driver: bridge
@@ -275,4 +173,3 @@ volumes:
   youmind-docreader-tmp:
   youmind-minio-data:
   youmind-milvus-data:
-  youmind-notex-data:

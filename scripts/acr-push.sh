@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Tag and push a local Notex image to Alibaba Cloud Container Registry (ACR).
+# Push MarkItDown HTTP + docreader images to Alibaba Cloud Container Registry (ACR).
+# 不含 Notex 镜像。
 #
-# 1) 登录（密码为仓库密码，在控制台「访问凭证」设置）:
-#    docker login --username='<阿里云账号全名>' "${ACR_REGISTRY}"
-# 2) 构建本地镜像:
-#    make notex-build
-# 3) 推送:
-#    cp scripts/acr.env.example scripts/acr.env   # 按需改 VPC 域名等
-#    ./scripts/acr-push.sh v1.0.0
+#   ./scripts/acr-push.sh latest
+#   ACR_VERSION=v1.0.0 make acr-push
 #
-# RAM 子用户登录时，企业别名不能带英文句号「.」（阿里云限制）。
+# 登录（密码为控制台「访问凭证」）:
+#   docker login --username='<阿里云账号全名>' "${ACR_REGISTRY}"
+#
+# 命名空间下需已创建仓库: markitdown、docreader（见 scripts/acr.env.example）。
+# RAM 子用户: 企业别名不能含英文句号「.」。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,26 +24,46 @@ fi
 
 : "${ACR_REGISTRY:=crpi-mpi18r3iierw5366.cn-wulanchabu.personal.cr.aliyuncs.com}"
 : "${ACR_NAMESPACE:=metanote}"
-: "${ACR_REPO:=metanote}"
-: "${NOTEX_LOCAL_IMAGE:=youmind/notex:local}"
+: "${ACR_REPO_MARKITDOWN:=markitdown}"
+: "${ACR_REPO_DOCREADER:=docreader}"
+: "${MARKITDOWN_LOCAL_IMAGE:=youmind/markitdown-http:local}"
+: "${DOCREADER_LOCAL_IMAGE:=youmind/weknora-docreader:local}"
+
+push_one() {
+	local local_img=$1
+	local remote_repo=$2
+	local ver=$3
+	local remote="${ACR_REGISTRY}/${ACR_NAMESPACE}/${remote_repo}:${ver}"
+	if ! docker image inspect "${local_img}" >/dev/null 2>&1; then
+		echo "error: local image not found: ${local_img}" >&2
+		return 1
+	fi
+	echo "tag  ${local_img} -> ${remote}"
+	docker tag "${local_img}" "${remote}"
+	echo "push ${remote}"
+	docker push "${remote}"
+}
+
+print_server_env() {
+	local ver=$1
+	local reg=$2
+	echo ""
+	echo "=== 服务器 .env（同版本 ${ver}；VPC 时替换 REGISTRY）==="
+	echo "MARKITDOWN_IMAGE=${reg}/${ACR_NAMESPACE}/${ACR_REPO_MARKITDOWN}:${ver}"
+	echo "DOCREADER_IMAGE=${reg}/${ACR_NAMESPACE}/${ACR_REPO_DOCREADER}:${ver}"
+}
 
 VERSION="${1:-}"
 if [[ -z "${VERSION}" ]] || [[ "${VERSION}" == -* ]]; then
 	echo "usage: $0 <镜像版本号>" >&2
-	echo "example: $0 v1.0.0" >&2
+	echo "example: $0 latest" >&2
 	exit 1
 fi
 
-REMOTE="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}:${VERSION}"
+echo "[acr] docker compose build markitdown docreader ..."
+docker compose build markitdown docreader
 
-if ! docker image inspect "${NOTEX_LOCAL_IMAGE}" >/dev/null 2>&1; then
-	echo "error: local image not found: ${NOTEX_LOCAL_IMAGE}" >&2
-	echo "run: make notex-build   (or docker compose build notex)" >&2
-	exit 1
-fi
-
-echo "tag  ${NOTEX_LOCAL_IMAGE} -> ${REMOTE}"
-docker tag "${NOTEX_LOCAL_IMAGE}" "${REMOTE}"
-echo "push ${REMOTE}"
-docker push "${REMOTE}"
-echo "done. on ECS: docker pull ${REMOTE}"
+push_one "${MARKITDOWN_LOCAL_IMAGE}" "${ACR_REPO_MARKITDOWN}" "${VERSION}"
+push_one "${DOCREADER_LOCAL_IMAGE}" "${ACR_REPO_DOCREADER}" "${VERSION}"
+print_server_env "${VERSION}" "${ACR_REGISTRY}"
+echo "[acr] push done (markitdown + docreader only)."
