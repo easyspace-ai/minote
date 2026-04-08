@@ -140,6 +140,15 @@ func TestNotexMainFlow(t *testing.T) {
 	}
 	conversation := decodeJSON[Conversation](t, data)
 
+	resp, data = authed.request(http.MethodGet, "/api/v1/conversations/"+jsonNumber(conversation.ID)+"/studio/slides-artifact-status", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("slides-artifact-status status=%d body=%s", resp.StatusCode, string(data))
+	}
+	artifactSt := decodeJSON[map[string]any](t, data)
+	if ready, _ := artifactSt["ready"].(bool); ready {
+		t.Fatalf("slides-artifact-status ready unexpectedly: %v", artifactSt)
+	}
+
 	resp, data = authed.request(http.MethodPost, "/api/v1/chat/messages", map[string]any{
 		"conversation_id": conversation.ID,
 		"content":         "hello notex",
@@ -274,7 +283,7 @@ func TestNotexProjectStudioScope(t *testing.T) {
 	}
 	project := decodeJSON[Project](t, data)
 
-	resp, data = authed.request(http.MethodPatch, "/api/v1/projects/"+jsonNumber(project.ID), map[string]any{
+	resp, data = authed.request(http.MethodPatch, "/api/v1/projects/"+project.ID, map[string]any{
 		"studio_scope": map[string]any{
 			"includeChat":     true,
 			"chatSummaryOnly": true,
@@ -293,7 +302,7 @@ func TestNotexProjectStudioScope(t *testing.T) {
 		t.Fatalf("studio_scope fields: %+v", updated.StudioScope)
 	}
 
-	resp, data = authed.request(http.MethodGet, "/api/v1/projects/"+jsonNumber(project.ID), nil)
+	resp, data = authed.request(http.MethodGet, "/api/v1/projects/"+project.ID, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get project status=%d body=%s", resp.StatusCode, string(data))
 	}
@@ -412,23 +421,38 @@ func TestNotexStudioPPTAndHTMLMaterials(t *testing.T) {
 	}
 	project := decodeJSON[Project](t, data)
 
-	// Slides require a skill-produced .pptx on the LangGraph thread; no markdown fallback.
-	resp, data = authed.request(http.MethodPost, "/api/v1/projects/"+jsonNumber(project.ID)+"/materials/slides-pptx", map[string]any{
+	// Without a thread .pptx, slides-pptx persists Markdown outline (markdown_fallback) when markdown is provided.
+	resp, data = authed.request(http.MethodPost, "/api/v1/projects/"+project.ID+"/materials/slides-pptx", map[string]any{
 		"title":    "Deck",
 		"markdown": "# Title slide\n",
 	})
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("slides-pptx without thread artifact: want 422, got %d body=%s", resp.StatusCode, string(data))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("slides-pptx markdown fallback: want 201, got %d body=%s", resp.StatusCode, string(data))
 	}
-	var slideErr map[string]string
-	if err := json.Unmarshal(data, &slideErr); err != nil {
-		t.Fatalf("decode slides-pptx error body: %v raw=%s", err, string(data))
+	slideMat := decodeJSON[Material](t, data)
+	if slideMat.Kind != "slides" {
+		t.Fatalf("kind=%q want slides", slideMat.Kind)
 	}
-	if !strings.Contains(slideErr["error"], "pptx_skill_artifact_missing") {
-		t.Fatalf("expected pptx_skill_artifact_missing in error, got %q", slideErr["error"])
+	if slideMat.Payload == nil {
+		t.Fatalf("expected payload on slides material")
+	}
+	pptxMeta, _ := slideMat.Payload["pptx"].(map[string]any)
+	if pptxMeta == nil {
+		t.Fatalf("expected pptx meta in payload, got %v", slideMat.Payload)
+	}
+	if avail, _ := pptxMeta["available"].(bool); avail {
+		t.Fatalf("markdown fallback should set pptx.available=false")
+	}
+	src, _ := pptxMeta["source"].(string)
+	if src != "markdown_fallback" {
+		t.Fatalf("pptx.source=%q want markdown_fallback", src)
+	}
+	fn, _ := slideMat.Payload["file_name"].(string)
+	if !strings.HasSuffix(strings.ToLower(fn), ".md") {
+		t.Fatalf("file_name should be .md for fallback, got %q", fn)
 	}
 
-	resp, data = authed.request(http.MethodPost, "/api/v1/projects/"+jsonNumber(project.ID)+"/materials/studio-html", map[string]any{
+	resp, data = authed.request(http.MethodPost, "/api/v1/projects/"+project.ID+"/materials/studio-html", map[string]any{
 		"title":    "Page",
 		"markdown": "<p>Hello studio html</p>",
 	})
@@ -438,6 +462,30 @@ func TestNotexStudioPPTAndHTMLMaterials(t *testing.T) {
 	htmlMat := decodeJSON[Material](t, data)
 	if htmlMat.Kind != "html" {
 		t.Fatalf("kind=%q want html", htmlMat.Kind)
+	}
+
+	resp, data = authed.request(http.MethodPost, "/api/v1/projects/"+project.ID+"/materials/studio-html", map[string]any{
+		"title":    "MdFallback",
+		"markdown": "### MD 小节\n\n**强调** 与正文。",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("studio-html markdown fallback status=%d body=%s", resp.StatusCode, string(data))
+	}
+	mdMat := decodeJSON[Material](t, data)
+	resp, data = authed.request(http.MethodGet, "/api/v1/projects/"+project.ID+"/materials/"+jsonNumber(mdMat.ID)+"/studio-file", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("studio-file download status=%d body=%s", resp.StatusCode, string(data))
+	}
+	body := string(data)
+	if !strings.Contains(body, "<h3") || !strings.Contains(body, "MD 小节") {
+		snip := body
+		if len(snip) > 280 {
+			snip = snip[:280] + "..."
+		}
+		t.Fatalf("expected goldmark-rendered heading in downloaded html, got snippet=%q", snip)
+	}
+	if strings.Contains(body, "###") {
+		t.Fatalf("raw markdown leaked into html file")
 	}
 }
 
@@ -533,7 +581,7 @@ func TestNotexOwnershipBoundaries(t *testing.T) {
 	}
 	documentID := documents[0].ID
 
-	resp, data = owner.request(http.MethodPost, "/api/v1/projects/"+jsonNumber(project.ID)+"/materials", map[string]any{
+	resp, data = owner.request(http.MethodPost, "/api/v1/projects/"+project.ID+"/materials", map[string]any{
 		"kind":   "report",
 		"title":  "Private Report",
 		"status": "ready",
@@ -550,11 +598,11 @@ func TestNotexOwnershipBoundaries(t *testing.T) {
 		name string
 		path string
 	}{
-		{name: "project get", path: "/api/v1/projects/" + jsonNumber(project.ID)},
+		{name: "project get", path: "/api/v1/projects/" + project.ID},
 		{name: "documents query", path: "/api/v1/libraries/" + jsonNumber(libraryID) + "/documents/query"},
 		{name: "document attachment", path: "/api/v1/documents/" + jsonNumber(documentID) + "/chat-attachment"},
-		{name: "material get", path: "/api/v1/projects/" + jsonNumber(project.ID) + "/materials/" + jsonNumber(material.ID)},
-		{name: "material download", path: "/api/v1/projects/" + jsonNumber(project.ID) + "/materials/" + jsonNumber(material.ID) + "/studio-file"},
+		{name: "material get", path: "/api/v1/projects/" + project.ID + "/materials/" + jsonNumber(material.ID)},
+		{name: "material download", path: "/api/v1/projects/" + project.ID + "/materials/" + jsonNumber(material.ID) + "/studio-file"},
 	}
 
 	for _, tc := range cases {

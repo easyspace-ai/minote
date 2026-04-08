@@ -189,6 +189,7 @@ func (s *Server) handleConversationsCreate(w http.ResponseWriter, r *http.Reques
 		Name       string  `json:"name"`
 		LibraryIDs []int64 `json:"library_ids"`
 		ChatMode   string  `json:"chat_mode"`
+		StudioOnly bool    `json:"studio_only"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
@@ -202,7 +203,7 @@ func (s *Server) handleConversationsCreate(w http.ResponseWriter, r *http.Reques
 	if chatMode == "" {
 		chatMode = "chat"
 	}
-	conv, err := s.createConversation(r.Context(), uid, body.AgentID, name, body.LibraryIDs, chatMode, false)
+	conv, err := s.createConversation(r.Context(), uid, body.AgentID, name, body.LibraryIDs, chatMode, body.StudioOnly)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -377,6 +378,39 @@ func (s *Server) handleConversationsEnsureThread(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"thread_id": tid})
+}
+
+// handleConversationsStudioSlidesArtifactStatus reports whether the LangGraph thread already exposes a skill .pptx
+// (strict Agent+skill path); the web UI polls this after chat stream ends before POST .../slides-pptx.
+func (s *Server) handleConversationsStudioSlidesArtifactStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method_not_allowed"})
+		return
+	}
+	uid, ok := s.requireUserID(w, r)
+	if !ok {
+		return
+	}
+	id, pathOK := pathInt64(r, "id")
+	if !pathOK || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
+		return
+	}
+	conversation, err := s.getConversation(r.Context(), uid, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if conversation == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation_not_found"})
+		return
+	}
+	ready, artifactPath := s.studioSlidesSkillPPTXProbe(r.Context(), uid, id)
+	resp := map[string]any{"ready": ready}
+	if artifactPath != "" {
+		resp["artifact_path"] = artifactPath
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleChatMessages(w http.ResponseWriter, r *http.Request) {

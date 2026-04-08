@@ -26,7 +26,7 @@ func (s *Server) libraryBelongsToUser(userID int64, libraryID int64) bool {
 	return false
 }
 
-func (s *Server) projectBelongsToUser(userID int64, projectID int64) bool {
+func (s *Server) projectBelongsToUser(userID int64, projectID string) bool {
 	for _, project := range s.projectsByUser[userID] {
 		if project.ID == projectID {
 			return true
@@ -52,7 +52,7 @@ func (s *Server) materialBelongsToUser(userID int64, materialID int64) bool {
 }
 
 // verifyStudioPendingReplace ensures material_id refers to a pending Studio row of the expected kind when materialID > 0.
-func (s *Server) verifyStudioPendingReplace(w http.ResponseWriter, ctx context.Context, uid, projectID, materialID int64, kind string) bool {
+func (s *Server) verifyStudioPendingReplace(w http.ResponseWriter, ctx context.Context, uid int64, projectID string, materialID int64, kind string) bool {
 	if materialID <= 0 {
 		return true
 	}
@@ -516,11 +516,10 @@ func (s *Server) handleProjectsCreate(w http.ResponseWriter, r *http.Request) {
 	s.librariesByUser[uid] = append(s.librariesByUser[uid], lib)
 	now := nowRFC3339()
 	p := &Project{
-		ID: s.nextProjectID, CreatedAt: now, UpdatedAt: now, Name: name,
+		ID: newProjectUUID(), CreatedAt: now, UpdatedAt: now, Name: name,
 		Description: strings.TrimSpace(body.Description), Category: strings.TrimSpace(body.Category), LibraryID: lib.ID,
 		Starred: false, Archived: false, IconIndex: -1, AccentHex: "",
 	}
-	s.nextProjectID++
 	s.projectsByUser[uid] = append(s.projectsByUser[uid], p)
 	s.projectMu.Unlock()
 	s.libraryMu.Unlock()
@@ -532,8 +531,8 @@ func (s *Server) handleProjectsGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, ok := pathInt64(r, "id")
-	if !ok || id <= 0 {
+	id, ok := pathProjectID(r)
+	if !ok || id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -566,8 +565,8 @@ func (s *Server) handleProjectsDelete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, ok := pathInt64(r, "id")
-	if !ok || id <= 0 {
+	id, ok := pathProjectID(r)
+	if !ok || id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -597,8 +596,8 @@ func (s *Server) handleProjectsPatch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, ok := pathInt64(r, "id")
-	if !ok || id <= 0 {
+	id, ok := pathProjectID(r)
+	if !ok || id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -712,7 +711,7 @@ func (s *Server) handleProjectsPatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "project_not_found"})
 }
 
-func (s *Server) sweepStaleStudioPendingMaterials(ctx context.Context, uid, projectID int64) {
+func (s *Server) sweepStaleStudioPendingMaterials(ctx context.Context, uid int64, projectID string) {
 	cutoff := time.Now().Add(-studioPendingStaleAfter)
 	if s.store != nil {
 		_ = s.store.MarkAbandonedStudioPendingFailed(ctx, uid, projectID, cutoff)
@@ -747,8 +746,8 @@ func (s *Server) handleProjectMaterialsList(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	projectID, ok := pathInt64(r, "id")
-	if !ok || projectID <= 0 {
+	projectID, ok := pathProjectID(r)
+	if !ok || projectID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -787,8 +786,8 @@ func (s *Server) handleProjectMaterialsCreate(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	projectID, ok := pathInt64(r, "id")
-	if !ok || projectID <= 0 {
+	projectID, ok := pathProjectID(r)
+	if !ok || projectID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -884,8 +883,8 @@ func (s *Server) handleProjectMaterialsPatch(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	projectID, ok := pathInt64(r, "id")
-	if !ok || projectID <= 0 {
+	projectID, ok := pathProjectID(r)
+	if !ok || projectID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -989,8 +988,8 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
-	projectID, ok := pathInt64(r, "id")
-	if !ok || projectID <= 0 {
+	projectID, ok := pathProjectID(r)
+	if !ok || projectID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -1009,7 +1008,7 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 		return
 	}
 	s.logger.Printf(
-		"[studio-audio] request project_id=%d request_id=%s title=%q base64_bytes=%d transcript_shape=%s",
+		"[studio-audio] request project_id=%s request_id=%s title=%q base64_bytes=%d transcript_shape=%s",
 		projectID,
 		requestIDFromContext(r.Context()),
 		strings.TrimSpace(body.Title),
@@ -1044,7 +1043,7 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 		return
 	}
 	s.logger.Printf(
-		"[studio-audio] file persisted project_id=%d request_id=%s path=%q bytes=%d mime=%s",
+		"[studio-audio] file persisted project_id=%s request_id=%s path=%q bytes=%d mime=%s",
 		projectID,
 		requestIDFromContext(r.Context()),
 		filePath,
@@ -1070,7 +1069,7 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 				return
 			}
 			s.logger.Printf(
-				"[studio-audio] material finalized project_id=%d request_id=%s material_id=%d payload=%v",
+				"[studio-audio] material finalized project_id=%s request_id=%s material_id=%d payload=%v",
 				projectID,
 				requestIDFromContext(r.Context()),
 				material.ID,
@@ -1085,7 +1084,7 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 			return
 		}
 		s.logger.Printf(
-			"[studio-audio] material created project_id=%d request_id=%s material_id=%d payload=%v",
+			"[studio-audio] material created project_id=%s request_id=%s material_id=%d payload=%v",
 			projectID,
 			requestIDFromContext(r.Context()),
 			material.ID,
@@ -1121,7 +1120,7 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 		s.materialMu.Unlock()
 		s.projectMu.RUnlock()
 		s.logger.Printf(
-			"[studio-audio] material finalized project_id=%d request_id=%s material_id=%d payload=%v",
+			"[studio-audio] material finalized project_id=%s request_id=%s material_id=%d payload=%v",
 			projectID,
 			requestIDFromContext(r.Context()),
 			m.ID,
@@ -1145,7 +1144,7 @@ func (s *Server) handleProjectMaterialsStudioAudio(w http.ResponseWriter, r *htt
 	s.materialMu.Unlock()
 	s.projectMu.RUnlock()
 	s.logger.Printf(
-		"[studio-audio] material created project_id=%d request_id=%s material_id=%d payload=%v",
+		"[studio-audio] material created project_id=%s request_id=%s material_id=%d payload=%v",
 		projectID,
 		requestIDFromContext(r.Context()),
 		m.ID,
@@ -1159,8 +1158,8 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	projectID, ok := pathInt64(r, "id")
-	if !ok || projectID <= 0 {
+	projectID, ok := pathProjectID(r)
+	if !ok || projectID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -1179,7 +1178,7 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.logger.Printf(
-		"[studio-material] request kind=%s project_id=%d request_id=%s conversation_id=%d title=%q markdown_bytes=%d markdown_shape=%s",
+		"[studio-material] request kind=%s project_id=%s request_id=%s conversation_id=%d title=%q markdown_bytes=%d markdown_shape=%s",
 		kind,
 		projectID,
 		requestIDFromContext(r.Context()),
@@ -1196,48 +1195,66 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 	var fileBytes []byte
 	var slidePPTXSource string
 	var slideSkillVPath string
+	payloadMime := mime
+	materialSubtitle := ""
 	switch {
 	case strings.EqualFold(ext, ".pptx"):
-		// Strict: only accept a skill-produced .pptx from the LangGraph thread (no Markdown→OOXML fallback).
-		if body.ConversationID <= 0 {
+		mdSlide := strings.TrimSpace(body.Markdown)
+		// Prefer a skill-produced .pptx from the LangGraph thread; if missing, persist Markdown outline when provided.
+		if body.ConversationID <= 0 && mdSlide == "" {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
-				"error": "pptx_skill_artifact_missing: conversation_id is required to resolve thread .pptx artifacts",
+				"error": "pptx_skill_artifact_missing: conversation_id or non-empty markdown is required",
 			})
 			return
 		}
-		preferred, vpath, prefErr := s.preferredStudioPPTXFromConversation(r.Context(), uid, body.ConversationID)
-		if prefErr != nil {
-			s.logger.Printf("[studio-material] slides skill lookup error: project_id=%d conversation_id=%d err=%v",
-				projectID, body.ConversationID, prefErr)
+		var preferred []byte
+		var vpath string
+		if body.ConversationID > 0 {
+			var prefErr error
+			preferred, vpath, prefErr = s.preferredStudioPPTXFromConversation(r.Context(), uid, body.ConversationID)
+			if prefErr != nil {
+				s.logger.Printf("[studio-material] slides skill lookup error: project_id=%s conversation_id=%d err=%v",
+					projectID, body.ConversationID, prefErr)
+			}
 		}
 		if len(preferred) == 0 {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
-				"error": "pptx_skill_artifact_missing: no valid .pptx on this conversation's LangGraph thread; the agent must emit a real PPTX (e.g. under user-data/outputs/) before calling slides-pptx",
-			})
-			return
+			if mdSlide == "" {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
+					"error": "pptx_skill_artifact_missing: no valid .pptx on this conversation's LangGraph thread; provide markdown in the request body for a slides outline fallback",
+				})
+				return
+			}
+			filename = ensureExtension(strings.ReplaceAll(strings.ToLower(title), " ", "-"), ".md")
+			fileBytes = []byte(mdSlide)
+			payloadMime = "text/markdown; charset=utf-8"
+			slidePPTXSource = "markdown_fallback"
+			slideSkillVPath = ""
+			materialSubtitle = "Markdown 大纲（未检测到 Agent .pptx；可用 Marp 等导出幻灯片）"
+			s.logger.Printf(
+				"[studio-material] slides source selected=markdown_fallback project_id=%s request_id=%s conversation_id=%d bytes=%d",
+				projectID,
+				requestIDFromContext(r.Context()),
+				body.ConversationID,
+				len(fileBytes),
+			)
+		} else {
+			fileBytes = preferred
+			slidePPTXSource = "thread_skill"
+			slideSkillVPath = vpath
+			s.logger.Printf(
+				"[studio-material] slides source selected=thread_skill project_id=%s request_id=%s conversation_id=%d artifact_path=%q bytes=%d",
+				projectID,
+				requestIDFromContext(r.Context()),
+				body.ConversationID,
+				vpath,
+				len(fileBytes),
+			)
 		}
-		fileBytes = preferred
-		slidePPTXSource = "thread_skill"
-		slideSkillVPath = vpath
-		s.logger.Printf(
-			"[studio-material] slides source selected=thread_skill project_id=%d request_id=%s conversation_id=%d artifact_path=%q bytes=%d",
-			projectID,
-			requestIDFromContext(r.Context()),
-			body.ConversationID,
-			vpath,
-			len(fileBytes),
-		)
 	case strings.HasSuffix(ext, ".html"):
 		md := strings.TrimSpace(body.Markdown)
 		var content string
 		if kind == "html" {
-			// AI is expected to output HTML (body fragment or full document); embed it directly.
-			lower := strings.ToLower(md)
-			if strings.HasPrefix(lower, "<!doctype") || strings.HasPrefix(lower, "<html") {
-				content = md
-			} else {
-				content = "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>" + title + "</title></head>\n<body>\n" + md + "\n</body></html>"
-			}
+			content = studioHTMLDocumentFromUserContent(title, md)
 		} else if kind == "mindmap" {
 			// Markmap autoloader renders nested-list Markdown as an interactive mind map.
 			content = "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>" + title + "</title>" +
@@ -1258,31 +1275,38 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.logger.Printf(
-		"[studio-material] file persisted kind=%s project_id=%d request_id=%s path=%q bytes=%d",
+		"[studio-material] file persisted kind=%s project_id=%s request_id=%s path=%q bytes=%d",
 		kind,
 		projectID,
 		requestIDFromContext(r.Context()),
 		filePath,
 		len(fileBytes),
 	)
-	payload := map[string]any{"file_name": filename, "mime_type": mime}
+	payload := map[string]any{"file_name": filename, "mime_type": payloadMime}
 	// Preserve source Markdown for Studio preview (slides outline, HTML source, mindmap list, etc.).
 	if md := strings.TrimSpace(body.Markdown); md != "" {
 		payload["markdown"] = md
 	}
 	if kind == "slides" {
-		meta := map[string]any{"available": true, "file_name": filename}
-		if slidePPTXSource != "" {
+		meta := map[string]any{"file_name": filename}
+		switch slidePPTXSource {
+		case "thread_skill":
+			meta["available"] = true
 			meta["source"] = slidePPTXSource
-		}
-		if slideSkillVPath != "" {
-			meta["skill_artifact_path"] = slideSkillVPath
+			if slideSkillVPath != "" {
+				meta["skill_artifact_path"] = slideSkillVPath
+			}
+		case "markdown_fallback":
+			meta["available"] = false
+			meta["source"] = slidePPTXSource
+		default:
+			meta["available"] = false
 		}
 		payload["pptx"] = meta
 	}
 	if s.store != nil {
 		if body.MaterialID > 0 {
-			material, err := s.store.UpdateMaterialForUser(r.Context(), uid, projectID, body.MaterialID, kind, title, "ready", "", payload, filePath)
+			material, err := s.store.UpdateMaterialForUser(r.Context(), uid, projectID, body.MaterialID, kind, title, "ready", materialSubtitle, payload, filePath)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
@@ -1292,7 +1316,7 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			s.logger.Printf(
-				"[studio-material] material finalized kind=%s project_id=%d request_id=%s material_id=%d payload=%v",
+				"[studio-material] material finalized kind=%s project_id=%s request_id=%s material_id=%d payload=%v",
 				kind,
 				projectID,
 				requestIDFromContext(r.Context()),
@@ -1302,13 +1326,13 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusOK, material)
 			return
 		}
-		material, err := s.store.CreateMaterialForUser(r.Context(), uid, projectID, kind, title, "ready", "", payload, filePath)
+		material, err := s.store.CreateMaterialForUser(r.Context(), uid, projectID, kind, title, "ready", materialSubtitle, payload, filePath)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		s.logger.Printf(
-			"[studio-material] material created kind=%s project_id=%d request_id=%s material_id=%d payload=%v",
+			"[studio-material] material created kind=%s project_id=%s request_id=%s material_id=%d payload=%v",
 			kind,
 			projectID,
 			requestIDFromContext(r.Context()),
@@ -1338,14 +1362,14 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 		m.Kind = kind
 		m.Title = title
 		m.Status = "ready"
-		m.Subtitle = ""
+		m.Subtitle = materialSubtitle
 		m.Payload = payload
 		m.FilePath = filePath
 		m.UpdatedAt = now
 		s.materialMu.Unlock()
 		s.projectMu.RUnlock()
 		s.logger.Printf(
-			"[studio-material] material finalized kind=%s project_id=%d request_id=%s material_id=%d payload=%v",
+			"[studio-material] material finalized kind=%s project_id=%s request_id=%s material_id=%d payload=%v",
 			kind,
 			projectID,
 			requestIDFromContext(r.Context()),
@@ -1364,13 +1388,13 @@ func (s *Server) handleMaterialFromMarkdown(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project_not_found"})
 		return
 	}
-	m := &Material{ID: s.nextMaterialID, CreatedAt: now, UpdatedAt: now, ProjectID: projectID, Kind: kind, Title: title, Status: "ready", Payload: payload, FilePath: filePath}
+	m := &Material{ID: s.nextMaterialID, CreatedAt: now, UpdatedAt: now, ProjectID: projectID, Kind: kind, Title: title, Status: "ready", Subtitle: materialSubtitle, Payload: payload, FilePath: filePath}
 	s.nextMaterialID++
 	s.materialsByID[m.ID] = m
 	s.materialMu.Unlock()
 	s.projectMu.RUnlock()
 	s.logger.Printf(
-		"[studio-material] material created kind=%s project_id=%d request_id=%s material_id=%d payload=%v",
+		"[studio-material] material created kind=%s project_id=%s request_id=%s material_id=%d payload=%v",
 		kind,
 		projectID,
 		requestIDFromContext(r.Context()),

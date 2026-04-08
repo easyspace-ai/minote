@@ -201,10 +201,24 @@ func (s *Server) executeRun(ctx context.Context, req RunCreateRequest, routeThre
 				uid = int64FromAny(runtimeContext["user_id"])
 			}
 			if cid > 0 {
-				if prefix := strings.TrimSpace(s.studioDocInject(ctx, uid, cid, ids)); prefix != "" {
-					prependStudioDocsToLastHuman(newMessages, prefix)
+			prefix := strings.TrimSpace(s.studioDocInject(ctx, uid, cid, ids))
+			if prefix != "" {
+				if s.logger != nil {
+					s.logger.Printf("[langgraph-inject] uid=%d cid=%d injecting prefix_len=%d", uid, cid, len(prefix))
 				}
+				prependStudioDocsToLastHuman(newMessages, prefix)
+				if s.logger != nil && len(newMessages) > 0 {
+					for i, m := range newMessages {
+						if m.Role == models.RoleHuman {
+							s.logger.Printf("[langgraph-inject] after prepend message[%d] content_len=%d", i, len(m.Content))
+							break
+						}
+					}
+				}
+			} else if s.logger != nil {
+				s.logger.Printf("[langgraph-inject] uid=%d cid=%d prefix is empty", uid, cid)
 			}
+		}
 		}
 	}
 	s.setThreadConfig(threadID, threadConfigFromRuntimeContext(threadID, runtimeContext, resolvedRunCfg))

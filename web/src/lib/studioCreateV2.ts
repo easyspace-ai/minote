@@ -89,7 +89,7 @@ export interface StudioSkillInfo {
  * 创建 Studio 生成任务（V2 后端主导 API）
  */
 export async function studioCreateV2(
-  projectId: number,
+  projectId: string,
   type: StudioCreateType,
   content: string,
   title?: string,

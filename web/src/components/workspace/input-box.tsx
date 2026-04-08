@@ -3,6 +3,7 @@
 import type { ChatStatus } from "ai";
 import {
   CheckIcon,
+  FileText,
   GraduationCapIcon,
   LightbulbIcon,
   PaperclipIcon,
@@ -108,6 +109,7 @@ export function InputBox({
   isNewThread,
   threadId,
   initialValue,
+  selectedLibraryDocs,
   onContextChange,
   onFollowupsVisibilityChange,
   onSubmit,
@@ -128,6 +130,8 @@ export function InputBox({
   isNewThread?: boolean;
   threadId: string;
   initialValue?: string;
+  /** Library documents selected in the sidebar (project notebook mode). */
+  selectedLibraryDocs?: { id: number; original_name: string }[];
   onContextChange?: (
     context: Omit<
       AgentThreadContext,
@@ -446,6 +450,24 @@ export function InputBox({
             <div className="absolute right-0 bottom-0 left-0 flex items-center justify-center">
               {extraHeader}
             </div>
+          </div>
+        )}
+        {selectedLibraryDocs && selectedLibraryDocs.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2 px-3 pt-2">
+            {selectedLibraryDocs.map((doc) => (
+              <div
+                key={doc.id}
+                className="group relative flex h-8 cursor-default items-center gap-1.5 rounded-md border border-dashed border-amber-300 bg-amber-50/80 px-1.5 text-sm font-medium text-amber-800 transition-all select-none dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-200"
+                title={`资料：${doc.original_name}`}
+              >
+                <div className="flex size-5 shrink-0 items-center justify-center">
+                  <FileText className="size-3.5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <span className="flex-1 truncate max-w-[min(100%,12rem)]">
+                  {doc.original_name}
+                </span>
+              </div>
+            ))}
           </div>
         )}
         <PromptInputAttachments>

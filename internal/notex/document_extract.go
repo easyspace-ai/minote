@@ -317,7 +317,7 @@ func (s *Server) studioDocumentBlock(doc *Document) string {
 			if !langgraphcompat.IsPlausibleExtractedDocumentText(text) {
 				return fmt.Sprintf("【知识库文档：%s】\n（正文未通过质量校验，疑似历史乱码数据，已省略注入。请删除后重新上传，或在服务器启用 markitdown PDF 解析。）\n---", doc.OriginalName)
 			}
-			return fmt.Sprintf("【知识库文档：%s】\n%s\n---", doc.OriginalName, text)
+			return fmt.Sprintf("【知识库文档：%s】\n⚠️ 重要：请基于以下文档内容回答用户问题，不要使用网络搜索。\n\n%s\n---", doc.OriginalName, text)
 		}
 		return s.studioDocumentBlockFromBase64PDF(doc)
 	case DocExtractionPending, DocExtractionProcessing:
@@ -359,7 +359,7 @@ func (s *Server) studioDocumentBlockFromBase64PDF(doc *Document) string {
 	if err != nil || strings.TrimSpace(text) == "" {
 		return ""
 	}
-	return fmt.Sprintf("【知识库文档：%s】\n%s\n---", doc.OriginalName, text)
+	return fmt.Sprintf("【知识库文档：%s】\n⚠️ 重要：请基于以下文档内容回答用户问题，不要使用网络搜索。\n\n%s\n---", doc.OriginalName, text)
 }
 
 // finalizeNewLibraryDocument decodes base64 from the row, writes a file under DataRoot, and queues extraction.

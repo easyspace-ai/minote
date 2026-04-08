@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"github.com/easyspace-ai/minote/pkg/docreaderclient"
 	"github.com/easyspace-ai/minote/pkg/milvusutil"
 	"github.com/easyspace-ai/minote/pkg/redisutil"
+	"github.com/google/uuid"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -47,6 +47,26 @@ func pathInt64(r *http.Request, name string) (int64, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+func pathProjectID(r *http.Request) (string, bool) {
+	raw := strings.TrimSpace(r.PathValue("id"))
+	if raw == "" {
+		return "", false
+	}
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	return parsed.String(), true
+}
+
+func newProjectUUID() string {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return uuid.New().String()
+	}
+	return u.String()
 }
 
 // sanitizeTextForPostgres strips NUL bytes. Postgres text (UTF8) rejects U+0000 and returns SQLSTATE 22021.
@@ -93,11 +113,11 @@ func (s *Server) ensureDefaultAgent(uid int64) *Agent {
 	return agent
 }
 
-func (s *Server) materialFileDir(projectID int64) string {
-	return filepath.Join(s.cfg.DataRoot, "projects", fmt.Sprintf("%d", projectID), "materials")
+func (s *Server) materialFileDir(projectID string) string {
+	return filepath.Join(s.cfg.DataRoot, "projects", projectID, "materials")
 }
 
-func (s *Server) writeMaterialFile(projectID int64, filename string, body []byte) (string, error) {
+func (s *Server) writeMaterialFile(projectID string, filename string, body []byte) (string, error) {
 	dir := s.materialFileDir(projectID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err

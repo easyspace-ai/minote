@@ -44,7 +44,7 @@ export type StudioScopeSettings = {
 };
 
 export type Project = {
-  id: number;
+  id: string;
   created_at: string;
   updated_at: string;
   name: string;
@@ -79,6 +79,14 @@ export type Conversation = {
   /** LangGraph thread id when bound (notex). */
   thread_id?: string;
   /** Hidden session used only for Studio generations (not listed in sidebar). */
+  studio_only?: boolean;
+};
+
+export type ConversationCreateBody = {
+  agent_id: number;
+  name?: string;
+  library_ids?: number[];
+  chat_mode?: string;
   studio_only?: boolean;
 };
 
@@ -168,7 +176,7 @@ export type StudioMaterial = {
   id: number;
   created_at: string;
   updated_at: string;
-  project_id: number;
+  project_id: string;
   kind: StudioMaterialKind;
   title: string;
   status: StudioMaterialStatus;
@@ -281,33 +289,33 @@ export const chatclawApi = {
 
   projects: {
     list: () => apiFetch<Project[]>("/api/v1/projects"),
-    get: (id: number) => apiFetch<Project>(`/api/v1/projects/${id}`),
+    get: (id: string) => apiFetch<Project>(`/api/v1/projects/${id}`),
     create: (body: { name: string; description?: string; category?: string }) =>
       apiFetch<Project>("/api/v1/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-    patch: (id: number, body: ProjectPatchBody) =>
+    patch: (id: string, body: ProjectPatchBody) =>
       apiFetch<Project>(`/api/v1/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-    remove: (id: number) =>
+    remove: (id: string) =>
       apiFetch<{ ok: boolean }>(`/api/v1/projects/${id}`, { method: "DELETE" }),
     materials: {
-      list: (projectId: number) =>
+      list: (projectId: string) =>
         apiFetch<StudioMaterial[]>(`/api/v1/projects/${projectId}/materials`),
-      get: (projectId: number, materialId: number) =>
+      get: (projectId: string, materialId: number) =>
         apiFetch<StudioMaterial>(`/api/v1/projects/${projectId}/materials/${materialId}`),
-      create: (projectId: number, body: CreateStudioMaterialBody) =>
+      create: (projectId: string, body: CreateStudioMaterialBody) =>
         apiFetch<StudioMaterial>(`/api/v1/projects/${projectId}/materials`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         }),
-      patch: (projectId: number, materialId: number, body: PatchStudioMaterialBody) =>
+      patch: (projectId: string, materialId: number, body: PatchStudioMaterialBody) =>
         apiFetch<StudioMaterial>(`/api/v1/projects/${projectId}/materials/${materialId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -315,7 +323,7 @@ export const chatclawApi = {
         }),
       /** Build .pptx from Markdown outline (server packs real OOXML; Keynote/PowerPoint compatible). */
       createSlidesPptx: (
-        projectId: number,
+        projectId: string,
         body: {
           title: string;
           markdown: string;
@@ -331,7 +339,7 @@ export const chatclawApi = {
         }),
       /** Standalone HTML page from AI body fragment or full document (server writes file). */
       createStudioHtml: (
-        projectId: number,
+        projectId: string,
         body: { title: string; markdown: string; language?: string; material_id?: number },
       ) =>
         apiFetch<StudioMaterial>(`/api/v1/projects/${projectId}/materials/studio-html`, {
@@ -341,7 +349,7 @@ export const chatclawApi = {
         }),
       /** Markmap standalone HTML from nested Markdown list (server writes file). */
       createStudioMindmap: (
-        projectId: number,
+        projectId: string,
         body: { title: string; markdown: string; language?: string; material_id?: number },
       ) =>
         apiFetch<StudioMaterial>(`/api/v1/projects/${projectId}/materials/studio-mindmap`, {
@@ -351,7 +359,7 @@ export const chatclawApi = {
         }),
       /** Binary audio (e.g. MP3 from /api/tts) stored under project materials; preview via studio-file. */
       createStudioAudio: (
-        projectId: number,
+        projectId: string,
         body: {
           title: string;
           base64_data: string;
@@ -368,7 +376,7 @@ export const chatclawApi = {
 
       /** V2: Unified studio create endpoint - backend handles prompt building and routing */
       studioCreate: (
-        projectId: number,
+        projectId: string,
         body: {
           type: "html" | "ppt" | "audio" | "mindmap" | "infographic" | "quiz" | "data_table";
           content: string;
@@ -488,7 +496,7 @@ export const chatclawApi = {
       apiFetch<Conversation[]>(
         `/api/v1/conversations?agent_id=${agentId}&agent_type=${encodeURIComponent(agentType)}`,
       ),
-    create: (body: Record<string, unknown>) =>
+    create: (body: ConversationCreateBody) =>
       apiFetch<Conversation>("/api/v1/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -509,6 +517,11 @@ export const chatclawApi = {
       apiFetch<{ thread_id: string }>(`/api/v1/conversations/${conversationId}/ensure-thread`, {
         method: "POST",
       }),
+    /** True when LangGraph thread lists a downloadable skill .pptx (poll after studio slides stream ends). */
+    studioSlidesArtifactStatus: (conversationId: number) =>
+      apiFetch<{ ready: boolean; artifact_path?: string }>(
+        `/api/v1/conversations/${conversationId}/studio/slides-artifact-status`,
+      ),
     patch: (conversationId: number, body: ConversationPatchBody) =>
       apiFetch<Conversation>(`/api/v1/conversations/${conversationId}`, {
         method: "PATCH",

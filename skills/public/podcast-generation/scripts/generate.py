@@ -11,6 +11,14 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Volcengine 豆包 openspeech HTTP v3 单向流（与 cmd/volc-tts、pkg/langgraphcompat 一致）
+VOLC_V3_DEFAULT_ENDPOINT = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+VOLC_V3_ADDITIONS = (
+    '{"disable_markdown_filter":true,"enable_language_detector":true,"enable_latex_tn":true,'
+    '"disable_default_bit_rate":true,"max_length_to_filter_parenthesis":0,'
+    '"cache_config":{"text_type":1,"use_cache":true}}'
+)
+
 
 # Types
 class ScriptLine:
@@ -37,96 +45,141 @@ class Script:
         return script
 
 
-def _volc_resource_id_for_voice(voice: str) -> str:
-    v = (voice or "").strip()
+def _resolve_volc_api_key() -> str:
+    """Match gatewayVolcTTSConfigFromEnv: API key for x-api-key header."""
+    key = (
+        os.getenv("VOLCENGINE_TTS_API_KEY", "").strip()
+        or os.getenv("TTS_API_KEY", "").strip()
+    )
+    if key:
+        return key
+    token = os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN", "").strip()
+    if token:
+        return token
+    app_id = os.getenv("VOLCENGINE_TTS_APP_ID", "").strip()
+    if app_id.lower().startswith("api-key-"):
+        return app_id
+    return ""
+
+
+def _resource_id_derived_from_voice(voice: str) -> str:
+    """Match volcV3ResourceIDByVoice in pkg/langgraphcompat/tts_volcengine_v3_unidirectional.go."""
+    v = voice.strip()
     low = v.lower()
     if v.startswith("S_"):
         return "volc.megatts.default"
-    if low.startswith("seed-tts") or "seed_tts" in low:
+    if low.startswith("seed-tts"):
+        return v
+    if "seed_tts" in low:
         return v
     return "volc.service_type.10029"
 
 
-def text_to_speech(text: str, voice_type: str) -> Optional[bytes]:
-    """Convert text to speech via Volcengine openspeech HTTP unidirectional (same as gateway /api/tts)."""
-    api_key = (os.getenv("VOLCENGINE_TTS_API_KEY") or os.getenv("TTS_API_KEY") or "").strip()
-    token = (os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN") or "").strip()
-    if not api_key and token:
-        api_key = token
-    app_id = (os.getenv("VOLCENGINE_TTS_APP_ID") or "").strip()
-    if not api_key and app_id.lower().startswith("api-key-"):
-        api_key = app_id
+def _resource_id_for_request(voice: str) -> str:
+    explicit = os.getenv("VOLCENGINE_TTS_RESOURCE_ID", "").strip()
+    if explicit:
+        return explicit
+    return _resource_id_derived_from_voice(voice)
 
+
+def _normalize_audio_format(fmt: str) -> str:
+    f = fmt.strip().lower()
+    return f if f in ("wav", "pcm") else "mp3"
+
+
+def _parse_volc_v3_stream_body(body: str) -> Optional[bytes]:
+    """Decode newline or concatenated JSON stream; aggregate base64 audio chunks."""
+    dec = json.JSONDecoder()
+    idx = 0
+    audio = bytearray()
+    last_code = 0
+    last_msg = ""
+    n = len(body)
+    while idx < n:
+        while idx < n and body[idx].isspace():
+            idx += 1
+        if idx >= n:
+            break
+        try:
+            obj, end = dec.raw_decode(body, idx)
+        except json.JSONDecodeError as e:
+            logger.error(f"TTS stream JSON decode at {idx}: {e}")
+            return None
+        idx = end
+        last_code = int(obj.get("code", 0))
+        last_msg = str(obj.get("message") or "").strip()
+        if last_code not in (0, 20_000_000):
+            logger.error(f"TTS error: code={last_code} message={last_msg!r}")
+            return None
+        data = obj.get("data")
+        if data is not None and str(data).strip():
+            try:
+                audio.extend(base64.b64decode(data))
+            except Exception as e:
+                logger.error(f"TTS base64 decode: {e}")
+                return None
+    if len(audio) == 0:
+        logger.error(f"TTS empty audio (last code={last_code} message={last_msg!r})")
+        return None
+    return bytes(audio)
+
+
+def text_to_speech(text: str, voice_type: str) -> Optional[bytes]:
+    """Convert text to speech using Volcengine openspeech HTTP v3 unidirectional API."""
+    api_key = _resolve_volc_api_key()
     if not api_key:
         raise ValueError(
-            "Set VOLCENGINE_TTS_API_KEY or TTS_API_KEY (openspeech x-api-key); "
-            "VOLCENGINE_TTS_ACCESS_TOKEN is accepted as a legacy alias."
+            "Set VOLCENGINE_TTS_API_KEY or TTS_API_KEY "
+            "(or VOLCENGINE_TTS_ACCESS_TOKEN for backward compatibility)"
         )
 
-    endpoint = (os.getenv("VOLCENGINE_TTS_HTTP_ENDPOINT") or "").strip().rstrip("/")
-    if not endpoint:
-        endpoint = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+    endpoint = (
+        os.getenv("VOLCENGINE_TTS_HTTP_ENDPOINT", "").strip() or VOLC_V3_DEFAULT_ENDPOINT
+    ).rstrip("/")
+    resource_id = _resource_id_for_request(voice_type)
+    audio_format = _normalize_audio_format(os.getenv("VOLCENGINE_TTS_FORMAT", "mp3"))
 
-    resource_id = (os.getenv("VOLCENGINE_TTS_RESOURCE_ID") or "").strip()
-    if not resource_id:
-        resource_id = _volc_resource_id_for_voice(voice_type)
+    try:
+        speed_ratio = float(os.getenv("VOLCENGINE_TTS_SPEED_RATIO", "1.2"))
+    except ValueError:
+        speed_ratio = 1.2
 
-    additions = (
-        '{"disable_markdown_filter":true,"enable_language_detector":true,"enable_latex_tn":true,'
-        '"disable_default_bit_rate":true,"max_length_to_filter_parenthesis":0,'
-        '"cache_config":{"text_type":1,"use_cache":true}}'
-    )
     payload = {
         "req_params": {
             "text": text.strip(),
             "speaker": voice_type.strip(),
-            "additions": additions,
-            "audio_params": {"format": "mp3", "sample_rate": 24000},
+            "additions": VOLC_V3_ADDITIONS,
+            "audio_params": {
+                "format": audio_format,
+                "sample_rate": 24000,
+                "speed_ratio": speed_ratio,
+            },
         }
     }
+
     headers = {
-        "Content-Type": "application/json",
         "x-api-key": api_key,
         "X-Api-Resource-Id": resource_id,
         "Connection": "keep-alive",
+        "Content-Type": "application/json",
         "Accept": "*/*",
     }
 
     try:
-        response = requests.post(endpoint, json=payload, headers=headers, timeout=180, stream=True)
-
-        if response.status_code != 200:
-            logger.error(f"TTS API error: {response.status_code} - {response.text[:2048]}")
+        response = requests.post(
+            endpoint,
+            json=payload,
+            headers=headers,
+            timeout=180,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            logger.error(
+                f"TTS HTTP {response.status_code}: {response.text[:4096]}"
+            )
             return None
-
-        audio_buf = bytearray()
-        for raw_line in response.iter_lines(decode_unicode=True):
-            if not raw_line:
-                continue
-            try:
-                evt = json.loads(raw_line)
-            except json.JSONDecodeError:
-                continue
-            code = evt.get("code", 0)
-            if code not in (0, 20000000):
-                msg = (evt.get("message") or "unknown error").strip()
-                logger.error(f"TTS volc error code={code} message={msg}")
-                return None
-            data = evt.get("data")
-            if data and str(data).strip():
-                try:
-                    audio_buf.extend(base64.b64decode(str(data)))
-                except Exception as e:  # noqa: BLE001
-                    logger.error(f"TTS base64 decode: {e}")
-                    return None
-
-        if not audio_buf:
-            logger.error("TTS empty audio stream")
-            return None
-        return bytes(audio_buf)
-
+        return _parse_volc_v3_stream_body(response.text)
     except Exception as e:
-        logger.error(f"TTS error: {str(e)}")
+        logger.error(f"TTS error: {e!s}")
         return None
 
 
@@ -134,11 +187,17 @@ def _process_line(args: tuple[int, ScriptLine, int]) -> tuple[int, Optional[byte
     """Process a single script line for TTS. Returns (index, audio_bytes)."""
     i, line, total = args
 
-    # Select voice based on speaker gender
+    # Select voice based on speaker gender (overridable via env, aligned with cmd/volc-tts defaults)
     if line.speaker == "male":
-        voice_type = "zh_male_yangguangqingnian_moon_bigtts"  # Male voice
+        voice_type = os.getenv(
+            "VOLCENGINE_TTS_VOICE_MALE",
+            "zh_male_yangguangqingnian_moon_bigtts",
+        ).strip()
     else:
-        voice_type = "zh_female_sajiaonvyou_moon_bigtts"  # Female voice
+        voice_type = os.getenv(
+            "VOLCENGINE_TTS_VOICE_FEMALE",
+            "zh_female_sajiaonvyou_moon_bigtts",
+        ).strip()
 
     logger.info(f"Processing line {i + 1}/{total} ({line.speaker})")
     audio = text_to_speech(line.paragraph, voice_type)
@@ -159,13 +218,10 @@ def tts_node(script: Script, max_workers: int = 4) -> list[bytes]:
     if total == 0:
         raise ValueError("Script contains no lines to process")
 
-    if not (
-        os.getenv("VOLCENGINE_TTS_API_KEY")
-        or os.getenv("TTS_API_KEY")
-        or os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN")
-    ):
+    if not _resolve_volc_api_key():
         raise ValueError(
-            "Missing TTS credentials: set VOLCENGINE_TTS_API_KEY or TTS_API_KEY (or VOLCENGINE_TTS_ACCESS_TOKEN as legacy alias)"
+            "Missing TTS credentials: set VOLCENGINE_TTS_API_KEY or TTS_API_KEY "
+            "(or VOLCENGINE_TTS_ACCESS_TOKEN for backward compatibility)"
         )
 
     tasks = [(i, line, total) for i, line in enumerate(script.lines)]
@@ -201,7 +257,7 @@ def tts_node(script: Script, max_workers: int = 4) -> list[bytes]:
     if not audio_chunks:
         raise ValueError(
             f"TTS generation failed for all {total} lines. "
-            "Please check VOLCENGINE_TTS_API_KEY / TTS_API_KEY environment variables."
+            "Check VOLCENGINE_TTS_API_KEY / TTS_API_KEY and VOLCENGINE_TTS_HTTP_ENDPOINT."
         )
     
     return audio_chunks

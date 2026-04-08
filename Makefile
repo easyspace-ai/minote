@@ -48,7 +48,7 @@ help:
 docker:
 	@test -f config.yaml || (echo "[docker] 创建 config.yaml" && cp config.example.yaml config.yaml)
 	@test -f .env || (echo "[docker] 创建 .env" && cp .env.example .env)
-	@echo "[docker] 启动基础服务..."
+	@echo "[docker] 启动 compose（含 notex API + 前端）..."
 	@$(COMPOSE) up -d
 	@echo "[docker] 服务已启动"
 	@$(COMPOSE) ps

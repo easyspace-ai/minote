@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  hashProjectId,
   PROJECT_ACCENT_PALETTE,
   PROJECT_ICON_PRESETS,
   projectTileFromProject,
@@ -25,7 +26,7 @@ function defaultIconIndex(p: Project): number {
   if (typeof raw === "number" && raw >= 0) {
     return raw % PROJECT_ICON_PRESETS.length;
   }
-  return Math.abs(Math.floor(p.id)) % PROJECT_ICON_PRESETS.length;
+  return hashProjectId(p.id) % PROJECT_ICON_PRESETS.length;
 }
 
 function defaultAccentHex(p: Project): string {

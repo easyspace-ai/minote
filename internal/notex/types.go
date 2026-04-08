@@ -70,7 +70,7 @@ type StudioScopeSettings struct {
 }
 
 type Project struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 	Name        string `json:"name"`
@@ -88,7 +88,7 @@ type Material struct {
 	ID        int64          `json:"id"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
-	ProjectID int64          `json:"project_id"`
+	ProjectID string         `json:"project_id"`
 	Kind      string         `json:"kind"`
 	Title     string         `json:"title"`
 	Status    string         `json:"status"`

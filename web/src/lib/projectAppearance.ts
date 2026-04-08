@@ -64,12 +64,21 @@ const FALLBACK_BG: string[] = [
   "bg-stone-800",
 ];
 
+/** Stable small int from project uuid (fallback when icon_index is negative). */
+export function hashProjectId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 function resolvedIconIndex(p: Pick<Project, "id" | "icon_index">): number {
   const raw = p.icon_index;
   if (typeof raw === "number" && raw >= 0) {
     return raw % PROJECT_ICON_PRESETS.length;
   }
-  return Math.abs(Math.floor(p.id)) % PROJECT_ICON_PRESETS.length;
+  return hashProjectId(p.id) % PROJECT_ICON_PRESETS.length;
 }
 
 export function projectTileFromProject(

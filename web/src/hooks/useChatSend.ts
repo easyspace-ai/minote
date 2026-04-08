@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { mergeAuthHeaders } from "@/api/http";
 
 type SSEHandlers = {
@@ -26,7 +27,7 @@ export function useChatSend() {
       handlers: SSEHandlers,
       options?: SendStreamOptions,
     ) => {
-      const requestId = options?.requestId ?? crypto.randomUUID();
+      const requestId = options?.requestId ?? uuidv4();
       setInFlight((n) => n + 1);
       setError(null);
       const base = import.meta.env.DEV ? "" : import.meta.env.VITE_BACKEND_ORIGIN ?? "";

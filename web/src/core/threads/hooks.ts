@@ -356,6 +356,21 @@ export function useThreadStream({
           }),
         );
 
+        // Build config for LangGraph runtime (matches backend runtimeContextFromRequest)
+        // Config type has 'configurable' property for runtime values
+        const config: Record<string, unknown> = {
+          configurable: {
+            recursion_limit: 1000,
+            // Include studio_document_ids and conversation_id from extraContext for document injection
+            ...(extraContext?.studio_document_ids != null && {
+              studio_document_ids: extraContext.studio_document_ids,
+            }),
+            ...(extraContext?.conversation_id != null && {
+              conversation_id: extraContext.conversation_id,
+            }),
+          },
+        };
+
         await thread.submit(
           {
             messages: [
@@ -380,9 +395,7 @@ export function useThreadStream({
             threadId: threadId,
             streamSubgraphs: true,
             streamResumable: true,
-            config: {
-              recursion_limit: 1000,
-            },
+            config: config,
             context: {
               ...context,
               ...extraContext,

@@ -171,16 +171,23 @@ After generation:
 
 ## Requirements
 
-Same credentials as the product `POST /api/tts` gateway (Volcengine openspeech HTTP unidirectional):
+TTS uses the same **Volcengine openspeech HTTP v3 unidirectional** API as this repo’s `cmd/volc-tts` and gateway `/api/tts` (`pkg/langgraphcompat`), not the legacy `api/v1/tts` flow.
 
-- `VOLCENGINE_TTS_API_KEY` or `TTS_API_KEY` (x-api-key)
-- Optional: `VOLCENGINE_TTS_RESOURCE_ID` (default `volc.service_type.10029` or inferred from voice)
-- Optional: `VOLCENGINE_TTS_HTTP_ENDPOINT` (default official unidirectional URL)
-- Legacy: `VOLCENGINE_TTS_ACCESS_TOKEN` is treated as x-api-key if the keys above are unset
+**Required (pick one primary key source):**
+- `VOLCENGINE_TTS_API_KEY` or `TTS_API_KEY`: value sent as header `x-api-key`
+- **Backward compatibility:** `VOLCENGINE_TTS_ACCESS_TOKEN` is used as the API key if the variables above are unset (matches `gatewayVolcTTSConfigFromEnv`)
+
+**Optional:**
+- `VOLCENGINE_TTS_HTTP_ENDPOINT`: default `https://openspeech.bytedance.com/api/v3/tts/unidirectional`
+- `VOLCENGINE_TTS_RESOURCE_ID`: if unset, derived from voice (e.g. `volc.service_type.10029` for typical `*_bigtts` speakers; seed voices use their own id)
+- `VOLCENGINE_TTS_VOICE_MALE` / `VOLCENGINE_TTS_VOICE_FEMALE`: override dual-host voices (defaults keep the previous male/female `moon_bigtts` pair)
+- `VOLCENGINE_TTS_SPEED_RATIO`: default `1.2`
+- `VOLCENGINE_TTS_FORMAT`: `mp3` (default), `wav`, or `pcm`
 
 ## Notes
 
 - **Always execute the full pipeline in one call** - no need to test individual steps or worry about timeouts
+- Legacy `VOLCENGINE_TTS_APPID` / `VOLCENGINE_TTS_CLUSTER` are **not** used by this script
 - The script JSON should match the content language (en or zh)
 - Technical content should be simplified for audio accessibility in the script
 - Complex notations (formulas, code) should be translated to plain language in the script

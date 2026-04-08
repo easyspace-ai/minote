@@ -43,7 +43,6 @@ type Server struct {
 	nextUserID         int64
 	nextLibraryID      int64
 	nextDocumentID     int64
-	nextProjectID      int64
 	nextMaterialID     int64
 	nextConversationID int64
 	nextMessageID      int64
@@ -109,7 +108,6 @@ func NewServer(cfg Config) (*Server, error) {
 		nextUserID:          1,
 		nextLibraryID:       1,
 		nextDocumentID:      1,
-		nextProjectID:       1,
 		nextMaterialID:      1,
 		nextConversationID:  1,
 		nextMessageID:       1,
@@ -222,6 +220,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/conversations/{id}", s.handleConversationsDelete)
 	mux.HandleFunc("GET /api/v1/conversations/{id}/messages", s.handleConversationsMessages)
 	mux.HandleFunc("POST /api/v1/conversations/{id}/ensure-thread", s.handleConversationsEnsureThread)
+	mux.HandleFunc("GET /api/v1/conversations/{id}/studio/slides-artifact-status", s.handleConversationsStudioSlidesArtifactStatus)
 	mux.HandleFunc("POST /api/v1/chat/messages", s.handleChatMessages)
 
 	mux.HandleFunc("GET /api/v1/skills/installed", s.handleSkillsInstalled)

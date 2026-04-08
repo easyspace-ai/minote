@@ -10,12 +10,15 @@ import (
 // the conversation's bound libraries and to the user.
 func (s *Server) StudioInjectionPrefixForLangGraph(ctx context.Context, userID, conversationID int64, docIDs []int64) string {
 	if s == nil || len(docIDs) == 0 || conversationID <= 0 {
+		s.logger.Printf("[studio-inject] early return: s.nil=%v, len(docIDs)=%d, conversationID=%d", s == nil, len(docIDs), conversationID)
 		return ""
 	}
 	conv, uid := s.resolveConversationForStudioInject(ctx, userID, conversationID)
 	if conv == nil || uid <= 0 {
+		s.logger.Printf("[studio-inject] resolve conversation failed: conv.nil=%v, uid=%d", conv == nil, uid)
 		return ""
 	}
+	s.logger.Printf("[studio-inject] resolved conversation: uid=%d, conv_id=%d, library_ids=%v", uid, conv.ID, conv.LibraryIDs)
 	allowed := make(map[int64]struct{}, len(conv.LibraryIDs))
 	for _, lid := range conv.LibraryIDs {
 		allowed[lid] = struct{}{}
@@ -29,23 +32,30 @@ func (s *Server) StudioInjectionPrefixForLangGraph(ctx context.Context, userID, 
 		if s.store != nil {
 			d, err := s.store.GetDocumentByIDForUser(ctx, uid, docID)
 			if err != nil || d == nil {
+				s.logger.Printf("[studio-inject] doc %d not found for user %d: err=%v", docID, uid, err)
 				continue
 			}
 			doc = d
 		} else {
 			doc = s.getDocumentForStudio(ctx, docID)
 			if doc == nil {
+				s.logger.Printf("[studio-inject] doc %d not found in memory", docID)
 				continue
 			}
 		}
 		if _, ok := allowed[doc.LibraryID]; !ok {
+			s.logger.Printf("[studio-inject] doc %d library %d not in allowed list %v", doc.ID, doc.LibraryID, allowed)
 			continue
 		}
-		if block := s.studioDocumentBlock(doc); block != "" {
+		block := s.studioDocumentBlock(doc)
+		s.logger.Printf("[studio-inject] doc %d (%s): status=%s, block_len=%d", doc.ID, doc.OriginalName, doc.ExtractionStatus, len(block))
+		if block != "" {
 			blocks = append(blocks, block)
 		}
 	}
-	return strings.Join(blocks, "\n\n")
+	result := strings.Join(blocks, "\n\n")
+	s.logger.Printf("[studio-inject] final result: %d blocks, total_len=%d", len(blocks), len(result))
+	return result
 }
 
 func (s *Server) resolveConversationForStudioInject(ctx context.Context, userID, conversationID int64) (*Conversation, int64) {

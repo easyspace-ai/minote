@@ -12,7 +12,7 @@
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml docker compose up -d
 #
 # 前置要求:
-#   - 已配置 ACR 镜像地址 (MARKITDOWN_IMAGE, DOCREADER_IMAGE)
+#   - 已配置 ACR 镜像地址 (MARKITDOWN_IMAGE, DOCREADER_IMAGE, NOTEX_IMAGE)
 #   - 已 docker login 到阿里云 ACR
 #
 # 更新镜像:
@@ -38,6 +38,13 @@ services:
     image: ${DOCREADER_IMAGE}
     ports:
       - "127.0.0.1:${DOCREADER_PORT:-50051}:50051"
+    restart: always
+
+  notex:
+    build: !reset null
+    image: ${NOTEX_IMAGE}
+    ports:
+      - "127.0.0.1:${NOTEX_HOST_PORT:-8787}:8787"
     restart: always
 
   postgres:

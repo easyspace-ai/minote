@@ -85,13 +85,15 @@ export function buildStudioGenerationPrompt(kind: StudioMaterialKind, title: str
 硬性要求（缺一不可，否则本任务视为失败）：
 1. 你必须调用环境里「演示文稿 / PowerPoint」相关的 **skill**，按该 skill 的流程生成成品；禁止仅用 Markdown 大纲替代 skill 产物。
 2. 你必须在对话对应的运行环境中写出 **真实的 .pptx 文件**（OOXML/ZIP），并保存到可被线程枚举的路径，例如「/mnt/user-data/outputs/」或等价 outputs 目录，文件名以 .pptx 结尾。
-3. skill 执行完成后，可用一两句中文确认已完成；**不要**把整套幻灯片正文用 Markdown 当作最终交付（系统不会再从 Markdown 降级生成 PPT）。
+3. **在结束回复之前**须确保该 .pptx 已写入并成功登记到线程文件列表（工具落盘完成后再收尾）；系统会在流式输出结束后等待该文件出现。
+4. skill 执行完成后，可用一两句中文确认已完成；**不要**把整套幻灯片正文用 Markdown 当作最终交付（系统不会再从 Markdown 降级生成 PPT）。
 
 内容须严格基于已注入的知识库文档正文；禁止编造。禁止输出检索步骤或自我说明。`;
     case "html":
       return `[工作室 · html] ${t}
 
-请输出语义清晰的 HTML（可为 body 片段，可含内联 style）。内容必须来自上下文中的知识库文档正文；正文不足时简短说明缺口，不要编造。不要写第三方渠道或 MCP/工具教程。不要使用 markdown 代码块包裹全文。`;
+请直接输出 **HTML**，不要输出 Markdown。禁止使用 Markdown 语法（如 # / ### 标题、**粗体**、| 表格线、--- 分隔线）；必须使用对应的 HTML 标签（如 <h1>、<strong>、<table>、<hr>）。
+可为完整 <!DOCTYPE html> 文档或仅 body 内片段；可含内联 style。内容必须来自上下文中的知识库文档正文；正文不足时简短说明缺口，不要编造。不要写第三方渠道或 MCP/工具教程。不要用 markdown 代码围栏包裹全文。`;
     case "mindmap":
       return `[工作室 · mindmap] ${t}
 

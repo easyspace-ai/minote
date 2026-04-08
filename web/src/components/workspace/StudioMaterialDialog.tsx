@@ -12,6 +12,10 @@ import {
 } from "@/lib/downloadProjectStudioFile";
 import { cn } from "@/lib/utils";
 
+function canFetchProjectMaterial(projectId: string | null | undefined): projectId is string {
+  return typeof projectId === "string" && projectId.trim().length > 0;
+}
+
 function str(payload: Record<string, unknown>, key: string): string | undefined {
   const v = payload[key];
   return typeof v === "string" ? v : undefined;
@@ -107,7 +111,7 @@ function StudioMarkdownWithSourceToggle(props: {
 }
 
 function StudioAudioMaterialBody(props: {
-  projectId?: number | null;
+  projectId?: string | null;
   materialId: number;
   payload: Record<string, unknown>;
   contentLayout?: StudioMaterialContentLayout;
@@ -122,7 +126,7 @@ function StudioAudioMaterialBody(props: {
   const [dlBusy, setDlBusy] = useState(false);
 
   useEffect(() => {
-    if (extUrl || !serverFile || projectId == null || projectId <= 0) {
+    if (extUrl || !serverFile || !canFetchProjectMaterial(projectId)) {
       return;
     }
     let cancelled = false;
@@ -156,7 +160,7 @@ function StudioAudioMaterialBody(props: {
     );
   }
 
-  if (serverFile && projectId != null && projectId > 0) {
+  if (serverFile && canFetchProjectMaterial(projectId)) {
     const dlName = serverFile.endsWith(".mp3") ? serverFile : `${serverFile}.mp3`;
     return (
       <div className="space-y-4">
@@ -219,7 +223,7 @@ function StudioAudioMaterialBody(props: {
 }
 
 function StudioExportPreview(props: {
-  projectId: number;
+  projectId: string;
   materialId: number;
   downloadLabel: string;
   downloadName: string;
@@ -334,7 +338,7 @@ function StudioExportPreview(props: {
 
 type PreviewPaneProps = {
   material: StudioMaterial;
-  projectId?: number | null;
+  projectId?: string | null;
   /** sidebar：NotebookShell 右栏内替换 Studio（与侧栏同宽、无全屏遮罩）；expanded：居中放大层；embedded：中间栏全高 */
   variant: "sidebar" | "expanded" | "embedded";
   onClose: () => void;
@@ -468,7 +472,7 @@ export function StudioMaterialPreviewPane({
 }
 
 type ExpandedOverlayProps = {
-  projectId?: number | null;
+  projectId?: string | null;
   material: StudioMaterial | null;
   open: boolean;
   /** 缩回右栏内联预览 */
@@ -527,7 +531,7 @@ export function StudioMaterialExpandedOverlay({
 }
 
 function MaterialBody(props: {
-  projectId?: number | null;
+  projectId?: string | null;
   materialId: number;
   kind: string;
   payload: Record<string, unknown>;
@@ -571,7 +575,7 @@ function MaterialBody(props: {
         "presentation.pptx";
 
       const pptxDownload =
-        projectId != null && projectId > 0 && pptxOk ? (
+        canFetchProjectMaterial(projectId) && pptxOk ? (
           <div className="space-y-2">
             <button
               type="button"
@@ -645,7 +649,7 @@ function MaterialBody(props: {
       const ex = exportFileMeta(payload, "html");
       const md = str(payload, "markdown");
       const serverFile = str(payload, "file_name");
-      if (projectId != null && projectId > 0 && (ex || serverFile)) {
+      if (canFetchProjectMaterial(projectId) && (ex || serverFile)) {
         return (
           <StudioExportPreview
             projectId={projectId}
@@ -684,7 +688,7 @@ function MaterialBody(props: {
       const ex = exportFileMeta(payload, "mindmap");
       const md = str(payload, "markdown");
       const serverFile = str(payload, "file_name");
-      if (projectId != null && projectId > 0 && (ex || serverFile)) {
+      if (canFetchProjectMaterial(projectId) && (ex || serverFile)) {
         return (
           <StudioExportPreview
             projectId={projectId}

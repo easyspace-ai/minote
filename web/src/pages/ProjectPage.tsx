@@ -33,6 +33,7 @@ import {
 } from "@/lib/studioPrompts";
 import { arrayBufferToBase64, synthesizePodcastSpeechMp3 } from "@/lib/studioPodcastTts";
 import { downloadLibraryDocument } from "@/lib/libraryDocumentDownload";
+import { waitForStudioSlidesArtifact } from "@/lib/waitForStudioSlidesArtifact";
 
 function ProjectDeerFlowChat({
   convId,
@@ -40,6 +41,7 @@ function ProjectDeerFlowChat({
   seedUserFiles,
   seedChatMode,
   studioDocumentIds = [],
+  selectedLibraryDocs = [],
   onChatThreadId,
 }: {
   convId: number | null;
@@ -48,6 +50,8 @@ function ProjectDeerFlowChat({
   seedChatMode?: "flash" | "thinking" | "pro" | "ultra";
   /** Checked library docs → same full-text injection as Studio (LangGraph run context). */
   studioDocumentIds?: number[];
+  /** Selected library docs for display in input box. */
+  selectedLibraryDocs?: { id: number; original_name: string }[];
   onChatThreadId?: (threadId: string | null) => void;
 }) {
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -114,14 +118,21 @@ function ProjectDeerFlowChat({
       seedChatMode={seedChatMode}
       streamExtraContext={streamExtraContext}
       skipArtifactsProvider
+      selectedLibraryDocs={selectedLibraryDocs}
     />
   );
+}
+
+const PROJECT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidProjectId(s: string): boolean {
+  return PROJECT_ID_RE.test(s);
 }
 
 export function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const location = useLocation();
-  const id = Number(projectId);
+  const id = (projectId ?? "").trim();
   const qc = useQueryClient();
   const ensureKeyRef = useRef<string | null>(null);
   const [firstConvId, setFirstConvId] = useState<number | null>(null);
@@ -190,7 +201,7 @@ export function ProjectPage() {
   const project = useQuery({
     queryKey: ["project", id],
     queryFn: () => chatclawApi.projects.get(id),
-    enabled: Number.isFinite(id) && id > 0,
+    enabled: isValidProjectId(id),
   });
 
   const agents = useQuery({
@@ -216,7 +227,7 @@ export function ProjectPage() {
   const materials = useQuery({
     queryKey: ["project-materials", id],
     queryFn: () => chatclawApi.projects.materials.list(id),
-    enabled: Number.isFinite(id) && id > 0,
+    enabled: isValidProjectId(id),
   });
 
   const docs = useQuery({
@@ -393,15 +404,47 @@ export function ProjectPage() {
           "该类型请先在对话中说明需求；Studio 快捷入口当前支持：音频概述、幻灯片、网页、思维导图。",
         );
       }
-      if (convId == null) {
-        throw new Error("会话未就绪，请稍候再试。");
+      if (agentId == null) {
+        throw new Error("助手未就绪，请稍候再试。");
+      }
+      if (libraryId == null) {
+        throw new Error("项目知识库未就绪，请稍候再试。");
       }
 
       const displayTitle = title.trim() || "未命名";
       const selectedDocs = docRows.filter((d) => selectedDocIds.includes(d.id));
 
+      // 1. 创建新会话（隐藏）
+      const timestamp = new Date().toLocaleString("zh-CN", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const kindLabel: Record<string, string> = {
+        audio: "音频",
+        slides: "幻灯片",
+        html: "网页",
+        mindmap: "思维导图",
+        report: "报告",
+        infographic: "信息图",
+        quiz: "测验",
+        data_table: "数据表",
+      };
+      const newConv = await chatclawApi.conversations.create({
+        agent_id: agentId,
+        name: `${project.data?.name ?? "Studio"} · ${kindLabel[kind] || kind} · ${timestamp}`,
+        chat_mode: "chat",
+        library_ids: [libraryId],
+        studio_only: true,
+      });
+      const newConvId = newConv.id;
+
+      // 刷新会话列表
+      void qc.invalidateQueries({ queryKey: ["conversations", agentId] });
+
       let chatExcerpt = "";
-      if (includeChat) {
+      if (includeChat && convId != null) {
         try {
           const msgs = await chatclawApi.conversations.messages(convId);
           chatExcerpt = truncateToRunes(
@@ -433,7 +476,7 @@ export function ProjectPage() {
       let assistantText = "";
       try {
         await sendStream(
-          convId,
+          newConvId,
           userContent,
           "project-studio",
           {
@@ -451,13 +494,21 @@ export function ProjectPage() {
 
         switch (kind) {
           case "slides": {
+            await chatclawApi.projects.materials.patch(id, materialId, {
+              subtitle: "等待演示文稿文件就绪…",
+            });
+            try {
+              await waitForStudioSlidesArtifact(newConvId);
+            } catch {
+              // 多数模型不会在线程中写出真实 .pptx；继续走服务端 Markdown 大纲降级（markdown_fallback）。
+            }
             const mdForPayload =
               raw ||
               `# ${displayTitle}\n\n_正文与版式以 presentation skill 生成的 .pptx 为准；本条仅作占位。_`;
             await chatclawApi.projects.materials.createSlidesPptx(id, {
               title: displayTitle,
               markdown: mdForPayload,
-              conversation_id: convId,
+              conversation_id: newConvId,
               material_id: materialId,
             });
             break;
@@ -611,7 +662,7 @@ export function ProjectPage() {
     }
   }, []);
 
-  if (!Number.isFinite(id) || id <= 0) {
+  if (!isValidProjectId(id)) {
     return <Navigate to="/" replace />;
   }
   if (project.isError) {
@@ -634,9 +685,11 @@ export function ProjectPage() {
     ? docRows.filter((d) => d.original_name.toLowerCase().includes(docQ))
     : docRows;
 
-  const convRows = (Array.isArray(conversations.data) ? conversations.data : []).filter((c: Conversation) =>
-    libraryId != null ? (c.library_ids?.includes(libraryId) ?? false) : false,
-  );
+  const convRows = (Array.isArray(conversations.data) ? conversations.data : [])
+    .filter((c: Conversation) =>
+      libraryId != null ? (c.library_ids?.includes(libraryId) ?? false) : false,
+    )
+    .sort((a: Conversation, b: Conversation) => b.id - a.id); // 新会话放最上面
   const convQ = convSearchQuery.trim().toLowerCase();
   const filteredConvs = convQ
     ? convRows.filter(
@@ -864,16 +917,30 @@ export function ProjectPage() {
               </div>
             ) : null}
             {studioSidebarMaterial ? (
-              <StudioMaterialPreviewPane
-                variant="sidebar"
-                material={studioSidebarMaterial}
-                projectId={id}
-                onClose={() => {
-                  setStudioSidebarMaterial(null);
-                  setStudioExpandOpen(false);
-                }}
-                onExpand={() => setStudioExpandOpen(true)}
-              />
+              studioSidebarMaterial.payload?._is_chat_artifact ? (
+                // 对话生成的文件，用 ArtifactFileDetail 显示
+                <ArtifactFileDetail
+                  className="min-h-0 flex-1"
+                  filepath={studioSidebarMaterial.payload._filepath as string}
+                  threadId={studioSidebarMaterial.payload._thread_id as string}
+                  onCloseRequest={() => {
+                    setStudioSidebarMaterial(null);
+                    setStudioExpandOpen(false);
+                  }}
+                />
+              ) : (
+                // 普通 Studio 材料
+                <StudioMaterialPreviewPane
+                  variant="sidebar"
+                  material={studioSidebarMaterial}
+                  projectId={id}
+                  onClose={() => {
+                    setStudioSidebarMaterial(null);
+                    setStudioExpandOpen(false);
+                  }}
+                  onExpand={() => setStudioExpandOpen(true)}
+                />
+              )
             ) : chatArtifactPath && chatThreadId ? (
               <ArtifactFileDetail
                 className="min-h-0 flex-1"
@@ -968,9 +1035,65 @@ export function ProjectPage() {
                 });
               }}
               onSelectChatArtifact={(filepath) => {
-                setStudioSidebarMaterial(null);
-                setStudioExpandOpen(false);
-                setChatArtifactPath(filepath);
+                void (async () => {
+                  let tid = chatThreadId;
+                  if (!tid && convId != null) {
+                    try {
+                      const { thread_id } = await chatclawApi.conversations.ensureThread(convId);
+                      tid = thread_id;
+                      setChatThreadId(thread_id);
+                    } catch {
+                      toast.error("无法解析会话线程，请稍后重试");
+                      return;
+                    }
+                  }
+                  if (!tid) {
+                    toast.error("会话未就绪，无法预览该文件");
+                    return;
+                  }
+
+                  // 从 filepath 推断类型
+                  let kind: StudioMaterialKind = "report";
+                  let title = "对话生成文件";
+                  const fileName = filepath.split("/").pop() ?? filepath;
+
+                  if (fileName.endsWith(".pptx") || fileName.includes("slides") || fileName.includes("ppt")) {
+                    kind = "slides";
+                    title = fileName.replace(/\.pptx$/i, "");
+                  } else if (fileName.endsWith(".html") || fileName.includes("html")) {
+                    kind = "html";
+                    title = fileName.replace(/\.html$/i, "");
+                  } else if (fileName.includes("mindmap") || fileName.includes("mind")) {
+                    kind = "mindmap";
+                    title = fileName.replace(/\.html$/i, "");
+                  } else if (fileName.endsWith(".mp3") || fileName.includes("audio") || fileName.includes("podcast")) {
+                    kind = "audio";
+                    title = fileName.replace(/\.mp3$/i, "");
+                  } else if (fileName.endsWith(".md")) {
+                    kind = "report";
+                    title = fileName.replace(/\.md$/i, "");
+                  }
+
+                  const tempMaterial: StudioMaterial = {
+                    id: Date.now(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    project_id: id,
+                    kind,
+                    title,
+                    status: "ready",
+                    subtitle: "来自当前会话",
+                    payload: {
+                      _is_chat_artifact: true,
+                      _filepath: filepath,
+                      _thread_id: tid,
+                    },
+                  };
+
+                  setChatArtifactPath(null);
+                  setStudioSidebarMaterial(tempMaterial);
+                  setStudioExpandOpen(true);
+                })();
               }}
             />
             )}
@@ -1015,6 +1138,7 @@ export function ProjectPage() {
         seedUserFiles={seedForActiveChat?.files}
         seedChatMode={seedForActiveChat?.chatMode}
         studioDocumentIds={studioChatDocIds}
+        selectedLibraryDocs={docRows.filter((d) => studioDocPick.get(d.id) !== false)}
         onChatThreadId={setChatThreadId}
       />
     </div>

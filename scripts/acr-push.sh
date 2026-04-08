@@ -84,10 +84,12 @@ check_buildx() {
         exit 1
     fi
 
-    # 检查是否有可用的 builder
-    if ! docker buildx ls | grep -q "default\|desktop-linux"; then
-        log_warn "未找到默认 builder，尝试创建..."
-        docker buildx create --use --name multiarch-builder 2>/dev/null || true
+    # 检查 Docker Desktop 是否启用了 Rosetta 或 containerd 镜像存储
+    log_info "检查 Docker 多架构支持..."
+    if ! docker buildx ls | grep -q "linux/amd64"; then
+        log_warn "当前 Docker 可能不支持 linux/amd64 平台"
+        log_info "请确保 Docker Desktop 设置中启用了："
+        log_info "  Settings -> Features -> Use Rosetta for x86/amd64 emulation on Apple Silicon"
     fi
 }
 
@@ -107,20 +109,33 @@ build_and_push() {
     log_info "  本地镜像: ${local_img}"
     log_info "  远程镜像: ${remote}"
 
-    # 使用 buildx 构建多架构镜像
+    # 确保使用正确的 builder
+    local builder_name="youmind-builder"
+    if ! docker buildx ls | grep -q "${builder_name}"; then
+        log_info "创建 buildx builder: ${builder_name}"
+        docker buildx create --name "${builder_name}" --driver docker-container --bootstrap 2>/dev/null || true
+    fi
+
+    # 使用 buildx 构建并推送多架构镜像
+    # 注意: --load 不支持多架构，直接使用 --push 推送到远程
     docker buildx build \
+        --builder "${builder_name}" \
         --platform linux/amd64 \
         --file "${dockerfile}" \
         --tag "${remote}" \
-        --tag "${local_img}" \
-        --load \
+        --push \
         "${context}"
 
-    log_success "构建完成: ${local_img}"
+    log_success "构建并推送完成: ${remote}"
 
-    log_info "推送 ${remote} ..."
-    docker push "${remote}"
-    log_success "推送完成: ${remote}"
+    # 为了方便本地测试，也构建一个本地镜像（单架构）
+    log_info "构建本地测试镜像..."
+    docker buildx build \
+        --platform linux/amd64 \
+        --file "${dockerfile}" \
+        --tag "${local_img}" \
+        --load \
+        "${context}" 2>/dev/null || log_warn "本地镜像构建失败（可忽略，远程已推送）"
 }
 
 # 构建并推送 markitdown

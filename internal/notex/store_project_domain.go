@@ -60,18 +60,19 @@ func (s *Store) ListProjectsByUser(ctx context.Context, userID int64) ([]*Projec
 
 func (s *Store) CreateProject(ctx context.Context, userID int64, libraryID int64, name string, description string, category string) (*Project, error) {
 	var (
-		project             Project
+		project              Project
 		createdAt, updatedAt time.Time
 	)
 	var scopeRaw []byte
+	projectUUID := newProjectUUID()
 	err := s.db.QueryRow(ctx, `
-		insert into notex_projects (user_id, library_id, name, description, category, created_at, updated_at)
-		select $1, l.id, $3, $4, $5, now(), now()
+		insert into notex_projects (id, user_id, library_id, name, description, category, created_at, updated_at)
+		select $1, $2, l.id, $4, $5, $6, now(), now()
 		from notex_libraries l
-		where l.user_id = $1 and l.id = $2
+		where l.user_id = $2 and l.id = $3
 		returning id, created_at, updated_at, name, description, category, library_id,
 		          starred, archived, icon_index, accent_hex, studio_scope
-	`, userID, libraryID, name, description, category).Scan(
+	`, projectUUID, userID, libraryID, name, description, category).Scan(
 		&project.ID,
 		&createdAt,
 		&updatedAt,
@@ -98,7 +99,7 @@ func (s *Store) CreateProject(ctx context.Context, userID int64, libraryID int64
 	return &project, nil
 }
 
-func (s *Store) GetProjectByID(ctx context.Context, userID int64, projectID int64) (*Project, error) {
+func (s *Store) GetProjectByID(ctx context.Context, userID int64, projectID string) (*Project, error) {
 	var (
 		project              Project
 		createdAt, updatedAt time.Time
@@ -127,7 +128,7 @@ func (s *Store) GetProjectByID(ctx context.Context, userID int64, projectID int6
 	return &project, nil
 }
 
-func (s *Store) DeleteProject(ctx context.Context, userID int64, projectID int64) error {
+func (s *Store) DeleteProject(ctx context.Context, userID int64, projectID string) error {
 	if _, err := s.db.Exec(ctx, `delete from notex_projects where user_id = $1 and id = $2`, userID, projectID); err != nil {
 		return fmt.Errorf("delete project: %w", err)
 	}
@@ -502,11 +503,11 @@ func (s *Store) ListDocumentIDsPendingExtraction(ctx context.Context) ([]int64, 
 	return ids, rows.Err()
 }
 
-func (s *Store) ListMaterialsByProject(ctx context.Context, projectID int64) ([]*Material, error) {
+func (s *Store) ListMaterialsByProject(ctx context.Context, projectID string) ([]*Material, error) {
 	return s.ListMaterialsByProjectForUser(ctx, 0, projectID)
 }
 
-func (s *Store) ListMaterialsByProjectForUser(ctx context.Context, userID int64, projectID int64) ([]*Material, error) {
+func (s *Store) ListMaterialsByProjectForUser(ctx context.Context, userID int64, projectID string) ([]*Material, error) {
 	query := `
 		select m.id, m.created_at, m.updated_at, m.project_id, m.kind, m.title, m.status, m.subtitle, m.payload, m.file_path
 		from notex_materials m
@@ -558,11 +559,11 @@ func (s *Store) ListMaterialsByProjectForUser(ctx context.Context, userID int64,
 	return out, nil
 }
 
-func (s *Store) CreateMaterial(ctx context.Context, projectID int64, kind string, title string, status string, subtitle string, payload map[string]any, filePath string) (*Material, error) {
+func (s *Store) CreateMaterial(ctx context.Context, projectID string, kind string, title string, status string, subtitle string, payload map[string]any, filePath string) (*Material, error) {
 	return s.CreateMaterialForUser(ctx, 0, projectID, kind, title, status, subtitle, payload, filePath)
 }
 
-func (s *Store) CreateMaterialForUser(ctx context.Context, userID int64, projectID int64, kind string, title string, status string, subtitle string, payload map[string]any, filePath string) (*Material, error) {
+func (s *Store) CreateMaterialForUser(ctx context.Context, userID int64, projectID string, kind string, title string, status string, subtitle string, payload map[string]any, filePath string) (*Material, error) {
 	if payload == nil {
 		payload = map[string]any{}
 	}
@@ -666,7 +667,7 @@ func (s *Store) GetMaterialByIDForUser(ctx context.Context, userID int64, materi
 
 // MarkAbandonedStudioPendingFailed marks pending/processing materials as failed when updated_at is before cutoff
 // (e.g. user refreshed while generation was in flight; or studio/create left rows stuck in processing).
-func (s *Store) MarkAbandonedStudioPendingFailed(ctx context.Context, userID, projectID int64, cutoff time.Time) error {
+func (s *Store) MarkAbandonedStudioPendingFailed(ctx context.Context, userID int64, projectID string, cutoff time.Time) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("notex store is not initialized")
 	}
@@ -686,7 +687,7 @@ func (s *Store) MarkAbandonedStudioPendingFailed(ctx context.Context, userID, pr
 }
 
 // UpdateMaterialForUser updates an existing material row when the project is owned by userID.
-func (s *Store) UpdateMaterialForUser(ctx context.Context, userID, projectID, materialID int64, kind, title, status, subtitle string, payload map[string]any, filePath string) (*Material, error) {
+func (s *Store) UpdateMaterialForUser(ctx context.Context, userID int64, projectID string, materialID int64, kind, title, status, subtitle string, payload map[string]any, filePath string) (*Material, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("notex store is not initialized")
 	}

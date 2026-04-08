@@ -50,11 +50,15 @@ func (s *Server) preferredStudioPPTXFromConversation(ctx context.Context, uid, c
 	return s.fetchNewestThreadSkillPPTX(tid)
 }
 
-func (s *Server) fetchNewestThreadSkillPPTX(threadID string) ([]byte, string, error) {
+// listSortedThreadPPTXFileCandidates returns .pptx rows from the thread file list that have a non-empty artifact_url,
+// sorted by the same path preference + recency rules as fetchNewestThreadSkillPPTX (ZIP validation happens on download).
+func (s *Server) listSortedThreadPPTXFileCandidates(threadID string) []threadFilesListEntry {
 	threadID = strings.TrimSpace(threadID)
-	if threadID == "" {
-		s.logger.Printf("[studio-pptx] fetch skipped: empty thread_id")
-		return nil, "", nil
+	if threadID == "" || s.aiHandler == nil {
+		if threadID == "" {
+			s.logger.Printf("[studio-pptx] fetch skipped: empty thread_id")
+		}
+		return nil
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/threads/"+threadID+"/files", nil)
@@ -62,7 +66,7 @@ func (s *Server) fetchNewestThreadSkillPPTX(threadID string) ([]byte, string, er
 	s.aiHandler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		s.logger.Printf("[studio-pptx] thread files request failed: thread_id=%s status=%d", threadID, rec.Code)
-		return nil, "", nil
+		return nil
 	}
 	var parsed struct {
 		Files []threadFilesListEntry `json:"files"`
@@ -73,7 +77,7 @@ func (s *Server) fetchNewestThreadSkillPPTX(threadID string) ([]byte, string, er
 		} else {
 			s.logger.Printf("[studio-pptx] thread files empty: thread_id=%s", threadID)
 		}
-		return nil, "", nil
+		return nil
 	}
 	s.logger.Printf("[studio-pptx] thread files fetched: thread_id=%s total=%d", threadID, len(parsed.Files))
 	candidates := make([]threadFilesListEntry, 0, len(parsed.Files))
@@ -89,7 +93,7 @@ func (s *Server) fetchNewestThreadSkillPPTX(threadID string) ([]byte, string, er
 	}
 	if len(candidates) == 0 {
 		s.logger.Printf("[studio-pptx] no pptx candidates: thread_id=%s", threadID)
-		return nil, "", nil
+		return nil
 	}
 	s.logger.Printf("[studio-pptx] pptx candidates: thread_id=%s %s", threadID, previewPPTXCandidates(candidates))
 	sort.SliceStable(candidates, func(i, j int) bool {
@@ -99,6 +103,14 @@ func (s *Server) fetchNewestThreadSkillPPTX(threadID string) ([]byte, string, er
 		}
 		return candidates[i].CreatedAt.After(candidates[j].CreatedAt)
 	})
+	return candidates
+}
+
+func (s *Server) fetchNewestThreadSkillPPTX(threadID string) ([]byte, string, error) {
+	candidates := s.listSortedThreadPPTXFileCandidates(threadID)
+	if len(candidates) == 0 {
+		return nil, "", nil
+	}
 	chosen := candidates[0]
 	rawURL := strings.TrimSpace(chosen.ArtifactURL)
 	if !strings.HasPrefix(rawURL, "/") {
@@ -198,4 +210,31 @@ func isZipSignedPPTX(b []byte) bool {
 		return true
 	}
 	return false
+}
+
+// studioSlidesSkillPPTXProbe is true when the conversation's LangGraph thread lists at least one .pptx with a relative
+// artifact URL (same selection order as slides-pptx). Does not download bytes — used for client polling after agent stream ends.
+func (s *Server) studioSlidesSkillPPTXProbe(ctx context.Context, uid, conversationID int64) (ready bool, artifactPath string) {
+	if conversationID <= 0 || s.aiHandler == nil {
+		return false, ""
+	}
+	conv, err := s.getConversation(ctx, uid, conversationID)
+	if err != nil || conv == nil {
+		return false, ""
+	}
+	tid := strings.TrimSpace(conv.ThreadID)
+	if tid == "" {
+		return false, ""
+	}
+	candidates := s.listSortedThreadPPTXFileCandidates(tid)
+	if len(candidates) == 0 {
+		return false, ""
+	}
+	chosen := candidates[0]
+	rawURL := strings.TrimSpace(chosen.ArtifactURL)
+	if !strings.HasPrefix(rawURL, "/") {
+		s.logger.Printf("[studio-pptx] probe: chosen artifact url is not relative: thread_id=%s path=%s", tid, chosen.Path)
+		return false, ""
+	}
+	return true, strings.TrimSpace(chosen.Path)
 }

@@ -43,8 +43,8 @@ func (s *Server) HandleProjectStudioCreate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	projectID, ok := pathInt64(r, "id")
-	if !ok || projectID <= 0 {
+	projectID, ok := pathProjectID(r)
+	if !ok || projectID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_id"})
 		return
 	}
@@ -61,7 +61,7 @@ func (s *Server) HandleProjectStudioCreate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	s.logger.Printf("[studio-create] project_id=%d type=%s title=%q content_bytes=%d options=%v",
+	s.logger.Printf("[studio-create] project_id=%s type=%s title=%q content_bytes=%d options=%v",
 		projectID, req.Type, req.Title, len(req.Content), req.Options)
 
 	// 验证并转换 material_id
@@ -93,7 +93,7 @@ func (s *Server) HandleProjectStudioCreate(w http.ResponseWriter, r *http.Reques
 }
 
 // handleStudioCreateAudio 处理音频生成
-func (s *Server) handleStudioCreateAudio(w http.ResponseWriter, r *http.Request, ctx context.Context, uid, projectID int64, req StudioCreateRequest) {
+func (s *Server) handleStudioCreateAudio(w http.ResponseWriter, r *http.Request, ctx context.Context, uid int64, projectID string, req StudioCreateRequest) {
 	// 加载 skill 配置
 	def, ok := s.GetStudioSkill("audio")
 	if !ok {
@@ -149,7 +149,7 @@ func (s *Server) handleStudioCreateAudio(w http.ResponseWriter, r *http.Request,
 		Success:    true,
 		MaterialID: material.ID,
 		Status:     material.Status,
-		JobID:      fmt.Sprintf("audio-%d-%s", projectID, generateShortID()),
+		JobID:      fmt.Sprintf("audio-%s-%s", projectID, generateShortID()),
 		Result: map[string]interface{}{
 			"type":        "audio",
 			"title":       title,
@@ -164,7 +164,7 @@ func (s *Server) handleStudioCreateAudio(w http.ResponseWriter, r *http.Request,
 }
 
 // handleStudioCreateHTML 处理 HTML 生成
-func (s *Server) handleStudioCreateHTML(w http.ResponseWriter, r *http.Request, ctx context.Context, uid, projectID int64, req StudioCreateRequest) {
+func (s *Server) handleStudioCreateHTML(w http.ResponseWriter, r *http.Request, ctx context.Context, uid int64, projectID string, req StudioCreateRequest) {
 	def, ok := s.GetStudioSkill("html")
 	if !ok {
 		s.logger.Printf("[studio-html] skill not found, using default logic")
@@ -219,7 +219,7 @@ func (s *Server) handleStudioCreateHTML(w http.ResponseWriter, r *http.Request, 
 		Success:    true,
 		MaterialID: material.ID,
 		Status:     material.Status,
-		JobID:      fmt.Sprintf("html-%d-%s", projectID, generateShortID()),
+		JobID:      fmt.Sprintf("html-%s-%s", projectID, generateShortID()),
 		Result: map[string]interface{}{
 			"type":        "html",
 			"title":       title,
@@ -235,7 +235,7 @@ func (s *Server) handleStudioCreateHTML(w http.ResponseWriter, r *http.Request, 
 
 // handleStudioCreatePPT refuses server-side themed PPTX: slides must come from the agent presentation skill
 // (.pptx on the LangGraph thread), then POST .../materials/slides-pptx copies that file into project materials.
-func (s *Server) handleStudioCreatePPT(w http.ResponseWriter, r *http.Request, ctx context.Context, uid, projectID int64, req StudioCreateRequest) {
+func (s *Server) handleStudioCreatePPT(w http.ResponseWriter, r *http.Request, ctx context.Context, uid int64, projectID string, req StudioCreateRequest) {
 	_ = ctx
 	_ = uid
 	_ = projectID
@@ -249,7 +249,7 @@ func (s *Server) handleStudioCreatePPT(w http.ResponseWriter, r *http.Request, c
 }
 
 // createFinalMaterial 创建最终状态的 material
-func (s *Server) createFinalMaterial(ctx context.Context, uid, projectID, materialID int64, kind, title, status string, payload map[string]interface{}, filePath string) (*Material, error) {
+func (s *Server) createFinalMaterial(ctx context.Context, uid int64, projectID string, materialID int64, kind, title, status string, payload map[string]interface{}, filePath string) (*Material, error) {
 	if payload == nil {
 		payload = make(map[string]interface{})
 	}
@@ -302,7 +302,7 @@ func (s *Server) createFinalMaterial(ctx context.Context, uid, projectID, materi
 }
 
 // createFinalMaterialWithSubtitle 创建最终状态的 material（带自定义 subtitle）
-func (s *Server) createFinalMaterialWithSubtitle(ctx context.Context, uid, projectID, materialID int64, kind, title, subtitle, status string, payload map[string]interface{}, filePath string) (*Material, error) {
+func (s *Server) createFinalMaterialWithSubtitle(ctx context.Context, uid int64, projectID string, materialID int64, kind, title, subtitle, status string, payload map[string]interface{}, filePath string) (*Material, error) {
 	if payload == nil {
 		payload = make(map[string]interface{})
 	}
@@ -356,7 +356,7 @@ func (s *Server) createFinalMaterialWithSubtitle(ctx context.Context, uid, proje
 }
 
 // handleStudioCreateMindmap 处理思维导图生成
-func (s *Server) handleStudioCreateMindmap(w http.ResponseWriter, r *http.Request, ctx context.Context, uid, projectID int64, req StudioCreateRequest) {
+func (s *Server) handleStudioCreateMindmap(w http.ResponseWriter, r *http.Request, ctx context.Context, uid int64, projectID string, req StudioCreateRequest) {
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = "思维导图"
@@ -395,7 +395,7 @@ func (s *Server) handleStudioCreateMindmap(w http.ResponseWriter, r *http.Reques
 // ==================== 辅助函数 ====================
 
 // createPendingMaterial 创建或更新 pending 状态的 material
-func (s *Server) createPendingMaterial(ctx context.Context, uid, projectID, materialID int64, kind, title string, payload map[string]interface{}) (*Material, error) {
+func (s *Server) createPendingMaterial(ctx context.Context, uid int64, projectID string, materialID int64, kind, title string, payload map[string]interface{}) (*Material, error) {
 	if payload == nil {
 		payload = make(map[string]interface{})
 	}

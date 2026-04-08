@@ -2,7 +2,7 @@ import { apiOrigin, mergeAuthHeaders } from "@/api/http";
 
 /** GET authenticated PPTX blob and trigger browser download. */
 export async function downloadProjectPptx(
-  projectId: number,
+  projectId: string,
   materialId: number,
   filename: string,
 ): Promise<void> {

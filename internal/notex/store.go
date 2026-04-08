@@ -118,6 +118,9 @@ func (s *Store) AutoMigrate(ctx context.Context) error {
 	if _, err := s.db.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("migrate notex schema: %w", err)
 	}
+	if err := s.migrateLegacyProjectBigintSchema(ctx); err != nil {
+		return fmt.Errorf("migrate notex project ids to uuid: %w", err)
+	}
 	return nil
 }
 
@@ -177,7 +180,7 @@ alter table notex_documents add column if not exists extraction_error text not n
 create index if not exists idx_notex_documents_extraction on notex_documents (extraction_status);
 
 create table if not exists notex_projects (
-	id bigserial primary key,
+	id uuid primary key,
 	user_id bigint not null references notex_users(id) on delete cascade,
 	library_id bigint not null references notex_libraries(id),
 	name text not null,
@@ -197,7 +200,7 @@ alter table notex_projects add column if not exists studio_scope jsonb not null 
 
 create table if not exists notex_materials (
 	id bigserial primary key,
-	project_id bigint not null references notex_projects(id) on delete cascade,
+	project_id uuid not null references notex_projects(id) on delete cascade,
 	kind text not null,
 	title text not null,
 	status text not null default 'pending',

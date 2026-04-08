@@ -67,6 +67,11 @@ export type ChatWorkspaceViewProps = {
    * When true, do not wrap with ArtifactsProvider (parent already provides it, e.g. project notebook).
    */
   skipArtifactsProvider?: boolean;
+  /**
+   * Library documents selected in the sidebar (project notebook mode).
+   * Displayed as read-only chips above the input box to indicate context injection.
+   */
+  selectedLibraryDocs?: { id: number; original_name: string }[];
 };
 
 export function ChatWorkspaceView(props: ChatWorkspaceViewProps) {
@@ -93,6 +98,7 @@ function ChatWorkspaceViewInner({
   seedUserFiles,
   seedChatMode,
   streamExtraContext,
+  selectedLibraryDocs,
 }: ChatWorkspaceViewProps) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -294,6 +300,7 @@ function ChatWorkspaceViewInner({
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
                       isUploading
                     }
+                    selectedLibraryDocs={selectedLibraryDocs}
                     onContextChange={(context) =>
                       setSettings("context", context)
                     }

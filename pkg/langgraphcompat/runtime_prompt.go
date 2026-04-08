@@ -80,6 +80,22 @@ const workingDirectoryPrompt = "<working_directory existed=\"true\">\n" +
 	"- Final deliverables must be copied to `/mnt/user-data/outputs` and presented using `present_files` tool\n" +
 	"</working_directory>"
 
+const knowledgeBaseDocPrompt = "<knowledge_base_documents>\n" +
+	"🚨 **ABSOLUTE PRIORITY: KNOWLEDGE BASE DOCUMENTS FIRST** 🚨\n\n" +
+	"**STRICT RULES - YOU MUST FOLLOW THESE IN ORDER:**\n\n" +
+	"1. **STEP 1: SCAN THE INJECTED DOCUMENTS** - Before doing ANYTHING else, read and understand the documents marked with 【知识库文档：filename】 that are pre-injected in the user's message.\n\n" +
+	"2. **STEP 2: ANSWER FROM DOCUMENTS ONLY** - If the injected documents contain information relevant to the user's question, YOU MUST:\n" +
+	"   - Answer the question SOLELY based on the document content\n" +
+	"   - Do NOT use any tools (especially not web_search, tavily_search, etc.)\n" +
+	"   - Do NOT search the internet for answers\n" +
+	"   - Cite which document you're using\n\n" +
+	"3. **STEP 3: ONLY WHEN DOCUMENTS ARE INSUFFICIENT** - If and ONLY if the injected documents clearly do NOT contain the answer, THEN you may consider using other tools.\n\n" +
+	"**FAILURE TO COMPLY WILL RESULT IN INCORRECT ANSWERS.**\n" +
+	"- The user has explicitly selected these documents because they want answers from THEM.\n" +
+	"- Web search should be your ABSOLUTE LAST resort when documents are present.\n" +
+	"- If you're unsure whether the documents contain the answer, assume they DO and look harder.\n" +
+	"</knowledge_base_documents>"
+
 const acpAgentPrompt = "**ACP Agent Tasks (`invoke_acp_agent`):**\n" +
 	"- ACP agents run in their own independent workspace, not in `/mnt/user-data/`\n" +
 	"- When writing prompts for ACP agents, describe the task only and do not reference `/mnt/user-data` paths\n" +
@@ -128,6 +144,8 @@ func (s *Server) environmentPrompt(runtimeContext map[string]any, skillNames ...
 		parts = append(parts, skills)
 	}
 	parts = append(parts, workingDirectoryPrompt)
+	// Add knowledge base document prompt to ensure AI prioritizes injected documents over web search
+	parts = append(parts, knowledgeBaseDocPrompt)
 	if s != nil && s.tools != nil && s.tools.Get("invoke_acp_agent") != nil {
 		parts = append(parts, acpAgentPrompt)
 	}

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeKnora 问答模式介绍</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px;
+            line-height: 1.7;
+            color: #333;
+            background-color: #f8fafc;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 35px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+        }
+        h1 {
+            color: #1e293b;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 30px;
+            font-size: 2rem;
+        }
+        h2 {
+            color: #334155;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+            border-left: 4px solid #3b82f6;
+            padding-left: 12px;
+        }
+        .mode-card {
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .fast-mode {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+        }
+        .smart-mode {
+            background-color: #f0fdf4;
+            border: 1px solid #bbf7d0;
+        }
+        .feature-section {
+            background-color: #f1f5f9;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 25px;
+        }
+        .conclusion {
+            margin-top: 25px;
+            padding: 18px;
+            background-color: #fffbeb;
+            border-radius: 8px;
+            border-left: 4px solid #f59e0b;
+        }
+        strong {
+            color: #1e293b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WeKnora 问答模式介绍</h1>
+        
+        <p>WeKnora 提供了两种不同的问答模式，以满足不同场景下的使用需求，同时支持自定义代理配置，帮助用户在响应速度和推理深度之间取得平衡。</p>
+
+        <h2>问答模式</h2>
+
+        <div class="mode-card fast-mode">
+            <h3 style="margin-top: 0; color: #1d4ed8;">快速问答</h3>
+            <p>快速问答采用 <strong>RAG（检索增强生成）</strong> 流程，能够快速检索相关信息块并生成答案。</p>
+            <p>该模式非常适合 <strong>日常知识查询</strong> 类任务，优势在于响应速度快。</p>
+        </div>
+
+        <div class="mode-card smart-mode">
+            <h3 style="margin-top: 0; color: #15803d;">智能推理</h3>
+            <p>智能推理由 <strong>ReACT 代理引擎</strong> 驱动，该引擎采用渐进式策略，能够自主协调知识检索、MCP 工具和网络搜索，通过迭代推理和反思得出最终结论。</p>
+            <p>该模式适用于 <strong>多源信息综合和复杂任务</strong>，优势在于推理深度强。</p>
+        </div>
+
+        <div class="feature-section">
+            <h2 style="margin-top: 0; border-left: none; padding-left: 0;">自定义代理</h2>
+            <p>WeKnora 还支持自定义代理，允许灵活配置以下内容：</p>
+            <ul>
+                <li>专用知识库</li>
+                <li>工具集</li>
+                <li>系统提示</li>
+            </ul>
+        </div>
+
+        <div class="conclusion">
+            <strong>核心优势</strong>
+            <p style="margin: 10px 0 0 0;">用户可以根据任务类型选择合适的问答模式，灵活在响应速度和推理深度之间取得平衡，兼顾不同场景的使用需求。</p>
+        </div>
+
+    </div>
+</body>
+</html>
