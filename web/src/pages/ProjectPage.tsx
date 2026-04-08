@@ -474,18 +474,59 @@ export function ProjectPage() {
       void qc.invalidateQueries({ queryKey: ["project-materials", id] });
 
       let assistantText = "";
+      let slidesStreamFailed = false;
+
+      const finalizeSlidesMaterial = async (markdown: string) => {
+        await chatclawApi.projects.materials.patch(id, materialId, {
+          subtitle: "等待演示文稿文件就绪…",
+        });
+        try {
+          await waitForStudioSlidesArtifact(newConvId);
+        } catch {
+          // 多数模型不会在线程中写出真实 .pptx；服务端用 Markdown 大纲降级（markdown_fallback）。
+        }
+        const mdForPayload =
+          markdown.trim() ||
+          `# ${displayTitle}\n\n_未生成到正文，请重试或在对话中直接撰写幻灯片 Markdown。_`;
+        await chatclawApi.projects.materials.createSlidesPptx(id, {
+          title: displayTitle,
+          markdown: mdForPayload,
+          conversation_id: newConvId,
+          material_id: materialId,
+        });
+      };
+
       try {
-        await sendStream(
-          newConvId,
-          userContent,
-          "project-studio",
-          {
-            onChunk: (d) => {
-              assistantText += d;
+        if (kind === "slides") {
+          try {
+            await sendStream(
+              newConvId,
+              userContent,
+              "project-studio",
+              {
+                onChunk: (d) => {
+                  assistantText += d;
+                },
+              },
+              { studioDocumentIds: selectedDocIds },
+            );
+          } catch {
+            slidesStreamFailed = true;
+            // 仍尝试用已收到的片段或占位 Markdown 落盘，避免整条任务显示「生成失败」
+          }
+        } else {
+          await sendStream(
+            newConvId,
+            userContent,
+            "project-studio",
+            {
+              onChunk: (d) => {
+                assistantText += d;
+              },
             },
-          },
-          { studioDocumentIds: selectedDocIds },
-        );
+            { studioDocumentIds: selectedDocIds },
+          );
+        }
 
         const raw = stripMarkdownFences(assistantText).trim();
         if (kind !== "slides" && !raw) {
@@ -494,23 +535,11 @@ export function ProjectPage() {
 
         switch (kind) {
           case "slides": {
-            await chatclawApi.projects.materials.patch(id, materialId, {
-              subtitle: "等待演示文稿文件就绪…",
-            });
-            try {
-              await waitForStudioSlidesArtifact(newConvId);
-            } catch {
-              // 多数模型不会在线程中写出真实 .pptx；继续走服务端 Markdown 大纲降级（markdown_fallback）。
+            let md = raw;
+            if (!md && slidesStreamFailed) {
+              md = `# ${displayTitle}\n\n_流式生成中断（模型或网络错误）。请稍后重试，或在左侧对话中生成大纲后从「对话生成」打开预览。_`;
             }
-            const mdForPayload =
-              raw ||
-              `# ${displayTitle}\n\n_正文与版式以 presentation skill 生成的 .pptx 为准；本条仅作占位。_`;
-            await chatclawApi.projects.materials.createSlidesPptx(id, {
-              title: displayTitle,
-              markdown: mdForPayload,
-              conversation_id: newConvId,
-              material_id: materialId,
-            });
+            await finalizeSlidesMaterial(md);
             break;
           }
           case "html":

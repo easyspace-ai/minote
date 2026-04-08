@@ -82,13 +82,14 @@ export function buildStudioGenerationPrompt(kind: StudioMaterialKind, title: str
     case "slides":
       return `[工作室 · slides] ${t}
 
-硬性要求（缺一不可，否则本任务视为失败）：
-1. 你必须调用环境里「演示文稿 / PowerPoint」相关的 **skill**，按该 skill 的流程生成成品；禁止仅用 Markdown 大纲替代 skill 产物。
-2. 你必须在对话对应的运行环境中写出 **真实的 .pptx 文件**（OOXML/ZIP），并保存到可被线程枚举的路径，例如「/mnt/user-data/outputs/」或等价 outputs 目录，文件名以 .pptx 结尾。
-3. **在结束回复之前**须确保该 .pptx 已写入并成功登记到线程文件列表（工具落盘完成后再收尾）；系统会在流式输出结束后等待该文件出现。
-4. skill 执行完成后，可用一两句中文确认已完成；**不要**把整套幻灯片正文用 Markdown 当作最终交付（系统不会再从 Markdown 降级生成 PPT）。
+你的**主交付物**是可直接使用的 **幻灯片 Markdown 大纲**（系统会据此保存并在 Studio 中预览；若运行环境具备演示文稿 skill 且你能写出真实 .pptx，可作为额外产物，但并非必需）。
 
-内容须严格基于已注入的知识库文档正文；禁止编造。禁止输出检索步骤或自我说明。`;
+请用中文输出，结构建议：
+- 可选：最上方用 \`---\` 分隔的 Marp 风格 front matter（theme 等），没有也可。
+- 每张幻灯片之间用单独一行的 \`---\` 分隔（无 Marp 时用 \`## 幻灯片标题\` 分节也可）。
+- 每张内：标题用 \`##\`，要点用 \`- \` 列表，保持简洁。
+
+严格要求：只根据已注入的知识库文档正文归纳，不要编造；不要用 Markdown 代码围栏包裹**全文**（局部代码块除外）；不要写工具/MCP 教程或复述检索过程。`;
     case "html":
       return `[工作室 · html] ${t}
 
